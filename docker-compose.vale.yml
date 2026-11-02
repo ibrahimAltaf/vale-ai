@@ -1,0 +1,78 @@
+name: vale-ai
+
+services:
+  db:
+    image: mysql:8.0
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: prestashop
+      MYSQL_DATABASE: prestashop
+      MYSQL_USER: prestashop
+      MYSQL_PASSWORD: prestashop
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-pprestashop"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+    volumes:
+      - vale_ai_db:/var/lib/mysql
+    networks:
+      - internal
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - internal
+    restart: unless-stopped
+
+  prestashop:
+    image: prestashop/prestashop:9.2.0-8.4
+    container_name: vale-ai
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_SERVER: db
+      DB_NAME: prestashop
+      DB_USER: prestashop
+      DB_PASSWD: prestashop
+      PS_INSTALL_AUTO: "1"
+      PS_ERASE_DB: "0"
+      PS_DOMAIN: vale.191-215-35-197.sslip.io
+      PS_FOLDER_ADMIN: admin-dev
+      PS_LANGUAGE: en
+      PS_COUNTRY: de
+      PS_DEV_MODE: "0"
+      PS_ENABLE_SSL: "1"
+      ADMIN_MAIL: demo@marketplace.local
+      ADMIN_PASSWD: DemoAdmin123!
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+    volumes:
+      - vale_ai_ps:/var/www/html
+      - ./modules/marketplacecore:/var/www/html/modules/marketplacecore
+      - ./modules/marketplacevendor:/var/www/html/modules/marketplacevendor
+      - ./modules/marketplacecatalog:/var/www/html/modules/marketplacecatalog
+      - ./modules/marketplaceshipping:/var/www/html/modules/marketplaceshipping
+      - ./modules/marketplaceoptimizer:/var/www/html/modules/marketplaceoptimizer
+      - ./modules/marketplaceorders:/var/www/html/modules/marketplaceorders
+      - ./modules/marketplacecommission:/var/www/html/modules/marketplacecommission
+      - ./modules/marketplaceanalytics:/var/www/html/modules/marketplaceanalytics
+      - ./modules/marketplacecollections:/var/www/html/modules/marketplacecollections
+      - ./bin/install-modules.php:/usr/local/bin/install-marketplace.php:ro
+      - ./docker/apache-limits.conf:/etc/apache2/conf-enabled/apache-limits.conf:ro
+    networks:
+      - internal
+      - edge
+    restart: unless-stopped
+
+networks:
+  internal:
+  edge:
+    external: true
+    name: ndehpms
+
+volumes:
+  vale_ai_db:
+  vale_ai_ps:

@@ -1,0 +1,36 @@
+{
+    "name": "pristashop/marketplace-demo",
+    "description": "Proprietary PrestaShop 9 multi-vendor marketplace technical demonstration.",
+    "type": "project",
+    "license": "proprietary",
+    "require": {
+        "php": ">=8.2"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^11.5"
+    },
+    "autoload": {
+        "psr-4": {
+            "Marketplace\\Core\\": "modules/marketplacecore/src/",
+            "Marketplace\\Vendor\\": "modules/marketplacevendor/src/",
+            "Marketplace\\Catalog\\": "modules/marketplacecatalog/src/",
+            "Marketplace\\Shipping\\": "modules/marketplaceshipping/src/",
+            "Marketplace\\Optimizer\\": "modules/marketplaceoptimizer/src/",
+            "Marketplace\\Orders\\": "modules/marketplaceorders/src/",
+            "Marketplace\\Commission\\": "modules/marketplacecommission/src/",
+            "Marketplace\\Analytics\\": "modules/marketplaceanalytics/src/",
+            "Marketplace\\Collections\\": "modules/marketplacecollections/src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Marketplace\\Tests\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit"
+    },
+    "config": {
+        "sort-packages": true
+    }
+}

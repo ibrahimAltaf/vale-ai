@@ -1,0 +1,17 @@
+DROP TABLE IF EXISTS `PREFIX_marketplace_password_reset`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_import_job`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_settlement`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_commission`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_stock_reservation`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_vendor_order_line`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_vendor_order`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_order`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_cart_line`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_cart`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_collection_product`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_collection`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_product_match`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_vendor_stock`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_vendor_offer`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_shipping_rule`;
+DROP TABLE IF EXISTS `PREFIX_marketplace_vendor`;

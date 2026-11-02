@@ -1,0 +1,3 @@
+vendor,sku,ean,brand,title,description,price,discount,stock,weight,image_url
+A,COFFEE-1KG,1234567890123,Marketplace Roasters,Premium Coffee 1kg,Updated roast from the sample file,11.90,0,8,1,
+C,TEA-100,5901234123457,Northwind,Sample Tea 100g,Created because the EAN and SKU are new,4.50,0,15,0.1,https://example.com/tea.jpg

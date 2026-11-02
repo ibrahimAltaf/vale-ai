@@ -1,0 +1,9 @@
+/vendor/
+/composer.phar
+.phpunit.cache/
+.env
+*.log
+.DS_Store
+Thumbs.db
+.cursor/
+*.pdf

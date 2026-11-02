@@ -1,0 +1,7 @@
+Hello {firstname},
+
+Order {reference} is {status}. Payment: {payment}. Total {total}.
+
+{shipments}
+
+Prista Market
