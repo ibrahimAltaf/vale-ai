@@ -60,7 +60,9 @@ services:
       - ./modules/marketplacecommission:/var/www/html/modules/marketplacecommission
       - ./modules/marketplaceanalytics:/var/www/html/modules/marketplaceanalytics
       - ./modules/marketplacecollections:/var/www/html/modules/marketplacecollections
+      - ./modules/marketplaceplatform:/var/www/html/modules/marketplaceplatform
       - ./bin/install-modules.php:/usr/local/bin/install-marketplace.php:ro
+      - ./bin/marketplace-cron.php:/usr/local/bin/marketplace-cron.php:ro
       - ./docker/apache-limits.conf:/etc/apache2/conf-enabled/apache-limits.conf:ro
     networks:
       - internal

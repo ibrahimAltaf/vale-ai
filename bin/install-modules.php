@@ -29,6 +29,7 @@ $modules = [
     'marketplaceorders',
     'marketplaceanalytics',
     'marketplacecollections',
+    'marketplaceplatform',
 ];
 
 foreach ($modules as $name) {

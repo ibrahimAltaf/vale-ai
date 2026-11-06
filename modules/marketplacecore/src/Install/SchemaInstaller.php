@@ -7,6 +7,7 @@ namespace Marketplace\Core\Install;
 use Marketplace\Core\Database\Connection;
 use Marketplace\Core\Repository\VendorRepository;
 use Marketplace\Core\Seed\DemoCatalog;
+use Marketplace\Platform\Schema;
 
 final class SchemaInstaller
 {
@@ -15,6 +16,7 @@ final class SchemaInstaller
     public function install(): void
     {
         $this->run('install.sql');
+        $this->platform();
     }
 
     public function upgrade(): void
@@ -58,7 +60,28 @@ final class SchemaInstaller
                 implode(',', $rule['postcode_prefixes']),
             );
         }
+        $this->column($db, 'marketplace_vendor_order', 'fulfillment_status', "VARCHAR(32) NOT NULL DEFAULT 'pending'");
+        $this->column($db, 'marketplace_order', 'id_marketplace_shopper', 'INT UNSIGNED NULL');
+        $this->platform();
         self::$upgraded = true;
+    }
+
+    private function platform(): void
+    {
+        if (!defined('_DB_PREFIX_') || !class_exists(Schema::class)) {
+            return;
+        }
+        $db = new Connection();
+        foreach (Schema::mysqlStatements(_DB_PREFIX_) as $sql) {
+            try {
+                $db->exec($sql);
+            } catch (\Throwable $exception) {
+                $message = strtolower($exception->getMessage());
+                if (!str_contains($message, 'duplicate') && !str_contains($message, 'already exists')) {
+                    throw $exception;
+                }
+            }
+        }
     }
 
     private function column(Connection $db, string $table, string $column, string $definition): void

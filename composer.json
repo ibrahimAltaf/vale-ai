@@ -19,7 +19,8 @@
             "Marketplace\\Orders\\": "modules/marketplaceorders/src/",
             "Marketplace\\Commission\\": "modules/marketplacecommission/src/",
             "Marketplace\\Analytics\\": "modules/marketplaceanalytics/src/",
-            "Marketplace\\Collections\\": "modules/marketplacecollections/src/"
+            "Marketplace\\Collections\\": "modules/marketplacecollections/src/",
+            "Marketplace\\Platform\\": "modules/marketplaceplatform/src/"
         }
     },
     "autoload-dev": {

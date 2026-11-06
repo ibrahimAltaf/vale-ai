@@ -31,6 +31,7 @@ final class Autoload
                 'Marketplace\\Commission\\' => $modules . '/marketplacecommission/src/',
                 'Marketplace\\Analytics\\' => $modules . '/marketplaceanalytics/src/',
                 'Marketplace\\Collections\\' => $modules . '/marketplacecollections/src/',
+                'Marketplace\\Platform\\' => $modules . '/marketplaceplatform/src/',
             ];
 
             foreach ($prefixes as $prefix => $directory) {
