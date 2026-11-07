@@ -1,0 +1,173 @@
+{
+  "info": {
+    "name": "PrestaShop Marketplace Workflow",
+    "description": "Authorized contract workflow. It logs in seeded admin, vendor and shopper accounts and checks business results. It does not call a live Mangopay account.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health",
+      "request": {"method": "GET", "url": "{{base_url}}/api/v1/health"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.test('health is public', function () { pm.response.to.have.status(200); });",
+        "const body = pm.response.json();",
+        "pm.test('provider is not marked live', function () { pm.expect(body.data.live_provider_verified).to.eql(false); });"
+      ]}}]
+    },
+    {
+      "name": "Login admin",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{base_url}}/api/v1/auth/login", "body": {"mode": "raw", "raw": "{\"role\":\"admin\",\"email\":\"admin@example.com\",\"password\":\"replace-with-12-plus\"}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.environment.set('admin_token', pm.response.json().data.token);"
+      ]}}]
+    },
+    {
+      "name": "Login vendor",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{base_url}}/api/v1/auth/login", "body": {"mode": "raw", "raw": "{\"role\":\"vendor\",\"email\":\"vendor@example.com\",\"password\":\"replace-with-12-plus\"}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.environment.set('vendor_token', pm.response.json().data.token);"
+      ]}}]
+    },
+    {
+      "name": "Login shopper",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{base_url}}/api/v1/auth/login", "body": {"mode": "raw", "raw": "{\"role\":\"shopper\",\"email\":\"shopper@example.com\",\"password\":\"replace-with-12-plus\"}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.environment.set('shopper_token', pm.response.json().data.token);"
+      ]}}]
+    },
+    {
+      "name": "Login other vendor",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{base_url}}/api/v1/auth/login", "body": {"mode": "raw", "raw": "{\"role\":\"vendor\",\"email\":\"other-vendor@example.com\",\"password\":\"replace-with-12-plus\"}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.environment.set('other_token', pm.response.json().data.token);"
+      ]}}]
+    },
+    {
+      "name": "Update vendor profile",
+      "request": {"method": "PUT", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{vendor_token}}"}], "url": "{{base_url}}/api/v1/vendors/me", "body": {"mode": "raw", "raw": "{\"city\":\"Berlin\",\"brands\":\"Alpine\",\"coverage\":\"DE\",\"min_order_enabled\":false,\"min_order_cents\":0}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data.city).to.eql('Berlin');",
+        "pm.expect(pm.response.json().data.min_order_enabled).to.eql(false);"
+      ]}}]
+    },
+    {
+      "name": "Search vendors",
+      "request": {"method": "GET", "url": "{{base_url}}/api/v1/vendors?q=Example"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data[0].name).to.eql('Example Goods');",
+        "pm.expect(pm.response.json().data[0].email).to.eql(undefined);"
+      ]}}]
+    },
+    {
+      "name": "Filter offers",
+      "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{shopper_token}}"}], "url": "{{base_url}}/api/v1/offers?vendor_ids=1"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data.length).to.be.above(0);",
+        "pm.expect(pm.response.json().data[0].vendor_id).to.eql(1);"
+      ]}}]
+    },
+    {
+      "name": "Optimize",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{shopper_token}}"}], "url": "{{base_url}}/api/v1/cart/optimize", "body": {"mode": "raw", "raw": "{\"postcode\":\"10115\",\"lines\":[{\"product_id\":50,\"quantity\":1}]}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data.grand_cents).to.eql(10000);",
+        "pm.expect(pm.response.json().data.status).to.eql('OPTIMAL_VERIFIED');"
+      ]}}]
+    },
+    {
+      "name": "Checkout",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{shopper_token}}"}, {"key": "Idempotency-Key", "value": "workflow-checkout-{{$guid}}"}], "url": "{{base_url}}/api/v1/checkout", "body": {"mode": "raw", "raw": "{\"postcode\":\"10115\",\"lines\":[{\"product_id\":50,\"quantity\":1}]}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "var orderData = pm.response.json().data;",
+        "pm.environment.set('order_id', String(orderData.id));",
+        "pm.environment.set('vendor_order_id', String(orderData.vendor_orders[0].id));",
+        "pm.test('checkout reserved without a native order', function () {",
+        "  pm.response.to.have.status(201);",
+        "  pm.expect(orderData.vendor_orders[0].native_order_id).to.eql(null);",
+        "});"
+      ]}}]
+    },
+    {
+      "name": "Pay",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{shopper_token}}"}, {"key": "Idempotency-Key", "value": "workflow-pay-{{$guid}}"}], "url": "{{base_url}}/api/v1/payments", "body": {"mode": "raw", "raw": "{\"order_id\":{{order_id}},\"card_id\":\"card_ok\",\"return_url\":\"https://shop.example/return\"}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(201);",
+        "pm.environment.set('payment_id', String(pm.response.json().data.id));"
+      ]}}]
+    },
+    {
+      "name": "Read paid order",
+      "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{shopper_token}}"}], "url": "{{base_url}}/api/v1/orders/{{order_id}}"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data.payment_status).to.eql('paid');",
+        "pm.expect(pm.response.json().data.id_customer).to.eql(null);"
+      ]}}]
+    },
+    {
+      "name": "Partial refund",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{admin_token}}"}, {"key": "Idempotency-Key", "value": "workflow-refund-{{$guid}}"}], "url": "{{base_url}}/api/v1/admin/refunds", "body": {"mode": "raw", "raw": "{\"order_id\":{{order_id}},\"amount_cents\":2500}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["pm.response.to.have.status(201);"]}}]
+    },
+    {
+      "name": "Set commission VAT",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{admin_token}}"}], "url": "{{base_url}}/api/v1/admin/vendors/1/vat", "body": {"mode": "raw", "raw": "{\"vat_rate_percent\":\"22.00\"}"}},
+      "event": [{"listen": "prerequest", "script": {"type": "text/javascript", "exec": [
+        "const now = new Date();",
+        "pm.environment.set('month', now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0'));"
+      ]}}, {"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data.vat_rate_percent).to.eql('22.00');"
+      ]}}]
+    },
+    {
+      "name": "Monthly statement",
+      "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{vendor_token}}"}], "url": "{{base_url}}/api/v1/vendors/me/statements?month={{month}}"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data.commission_cents).to.be.a('number');"
+      ]}}]
+    },
+    {
+      "name": "Credit note",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}, {"key": "Authorization", "value": "Bearer {{vendor_token}}"}], "url": "{{base_url}}/api/v1/vendors/me/credit-notes", "body": {"mode": "raw", "raw": "{\"vendor_order_id\":{{vendor_order_id}}}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(201);",
+        "pm.expect(pm.response.json().data.kind).to.eql('credit_note');",
+        "pm.environment.set('invoice_id', String(pm.response.json().data.id));"
+      ]}}]
+    },
+    {
+      "name": "Shopper reads credit note",
+      "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{shopper_token}}"}], "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["pm.response.to.have.status(200);"]}}]
+    },
+    {
+      "name": "Other vendor cannot read the credit note",
+      "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{other_token}}"}], "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["pm.response.to.have.status(404);"]}}]
+    },
+    {
+      "name": "Shopper cannot read vendor statements",
+      "request": {"method": "GET", "header": [{"key": "Authorization", "value": "Bearer {{shopper_token}}"}], "url": "{{base_url}}/api/v1/vendors/me/statements?month={{month}}"},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": ["pm.response.to.have.status(403);"]}}]
+    },
+    {
+      "name": "Password reset does not reveal the account",
+      "request": {"method": "POST", "header": [{"key": "Content-Type", "value": "application/json"}], "url": "{{base_url}}/api/v1/auth/password-reset", "body": {"mode": "raw", "raw": "{\"role\":\"shopper\",\"email\":\"missing@example.com\"}"}},
+      "event": [{"listen": "test", "script": {"type": "text/javascript", "exec": [
+        "pm.response.to.have.status(200);",
+        "pm.expect(pm.response.json().data.accepted).to.eql(true);",
+        "pm.expect(pm.response.json().data.token).to.eql(undefined);"
+      ]}}]
+    }
+  ]
+}

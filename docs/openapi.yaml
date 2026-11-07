@@ -16,6 +16,8 @@ tags:
   -
     name: Authentication
   -
+    name: Customers
+  -
     name: Vendors
   -
     name: Shipping
@@ -42,11 +44,11 @@ tags:
   -
     name: Commissions
   -
+    name: Invoices
+  -
     name: Admin
   -
     name: CSV Imports
-  -
-    name: Invoices
 paths:
   /api/v1/health:
     get:
@@ -365,6 +367,326 @@ paths:
             schema:
               type: object
             example: {}
+  /api/v1/auth/password-reset:
+    post:
+      tags:
+        - Authentication
+      operationId: passwordReset
+      summary: Request a password reset without revealing whether the account exists.
+      description: "Permission auth.reset. Roles: public."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              role: shopper
+              email: "shopper@example.com"
+  /api/v1/auth/password-reset/confirm:
+    post:
+      tags:
+        - Authentication
+      operationId: passwordConfirm
+      summary: Set a new password with a reset token.
+      description: "Permission auth.reset. Roles: public."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              role: shopper
+              email: "shopper@example.com"
+              token: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+              password: replacement-password-1
+  /api/v1/customers/me:
+    get:
+      tags:
+        - Customers
+      operationId: customerMe
+      summary: Read the authenticated customer and any linked storefront id.
+      description: "Permission customer.read. Roles: shopper."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+  /api/v1/customers/me/link-challenges:
+    post:
+      tags:
+        - Customers
+      operationId: linkChallenge
+      summary: Start a link to a PrestaShop customer. Email alone is not accepted.
+      description: "Permission customer.link. Roles: shopper."
+      responses:
+        201:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              id_customer: 3
+  /api/v1/vendors:
+    get:
+      tags:
+        - Vendors
+      operationId: vendorSearch
+      summary: Search active public vendor profiles by name.
+      description: "Permission vendors.search. Roles: public."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        -
+          $ref: "#/components/parameters/Page"
+        -
+          $ref: "#/components/parameters/PerPage"
+        -
+          name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 80
   /api/v1/vendors/me:
     get:
       tags:
@@ -491,6 +813,140 @@ paths:
               description: Wholesale pantry
               contact_name: Eva
               phone: "+4930123456"
+              city: Berlin
+              brands: Alpine
+              coverage: DE
+              min_order_enabled: false
+              min_order_cents: 0
+  /api/v1/vendors/me/logo:
+    post:
+      tags:
+        - Vendors
+      operationId: uploadLogo
+      summary: Upload a PNG or JPEG logo.
+      description: "Permission vendor.logo. Roles: vendor."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              content_base64: iVBORw0KGgo=
+  /api/v1/vendors/{id}:
+    get:
+      tags:
+        - Vendors
+      operationId: publicVendor
+      summary: Read one active public vendor profile.
+      description: "Permission vendors.read. Roles: public."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
   /api/v1/vendors/me/shipping-rules:
     post:
       tags:
@@ -561,6 +1017,8 @@ paths:
               free_threshold_cents: 5000
               surcharge_cents_per_kg: 0
               postcode_prefixes: {}
+              pallet_base_cents: 6500
+              pallet_free_threshold_cents: null
   /api/v1/catalog/products:
     get:
       tags:
@@ -693,6 +1151,12 @@ paths:
           schema:
             type: integer
         -
+          name: vendor_ids
+          in: query
+          schema:
+            type: string
+            description: "Comma-separated vendor ids, at most 20."
+        -
           name: product_id
           in: query
           schema:
@@ -792,6 +1256,8 @@ paths:
               discount: "0"
               stock: 8
               weight_grams: 1000
+              volume_cm3: 1200
+              pallet_only: false
   /api/v1/inventory:
     get:
       tags:
@@ -2305,6 +2771,202 @@ paths:
       security:
         -
           bearerAuth: {}
+  /api/v1/vendors/me/statements:
+    get:
+      tags:
+        - Commissions
+      operationId: statement
+      summary: Read a monthly commission statement.
+      description: "Permission statements.read. Roles: vendor."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+      parameters:
+        -
+          name: month
+          in: query
+          schema:
+            type: string
+            pattern: "^[0-9]{4}-[0-9]{2}$"
+  /api/v1/vendors/me/statements/export:
+    get:
+      tags:
+        - Commissions
+      operationId: exportStatement
+      summary: Export a monthly commission statement as CSV.
+      description: "Permission statements.export. Roles: vendor."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+      parameters:
+        -
+          name: month
+          in: query
+          schema:
+            type: string
+            pattern: "^[0-9]{4}-[0-9]{2}$"
+  /api/v1/vendors/me/credit-notes:
+    post:
+      tags:
+        - Invoices
+      operationId: creditNote
+      summary: Create a credit note for a refunded shipment.
+      description: "Permission invoices.credit. Roles: vendor."
+      responses:
+        201:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              vendor_order_id: 1
   /api/v1/admin/reconciliation:
     get:
       tags:
@@ -3487,6 +4149,148 @@ paths:
               type: object
             example:
               commission_percent: "10.00"
+  /api/v1/admin/vendors/{id}/vat:
+    post:
+      tags:
+        - Admin
+      operationId: setVat
+      summary: Set the VAT rate applied to commission.
+      description: "Permission admin.vendors.vat. Roles: admin."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+      parameters:
+        -
+          name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              vat_rate_percent: "22.00"
+  /api/v1/admin/customers/links:
+    post:
+      tags:
+        - Customers
+      operationId: confirmLink
+      summary: Confirm a customer link with the one-time code. Email matching is not used.
+      description: "Permission admin.customers.link. Roles: admin."
+      responses:
+        200:
+          description: "Success envelope. List routes also return meta.page, meta.per_page and meta.total."
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                  meta:
+                    $ref: "#/components/schemas/PageMeta"
+        401:
+          description: Authentication is missing or the webhook could not be verified.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        403:
+          description: The account role or vendor scope does not allow this call.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        404:
+          description: "The route or record was not found. Another customer's order is returned as 404."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        409:
+          description: "The cart is infeasible, stock is insufficient, or the record conflicts."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        422:
+          description: The request failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        429:
+          description: The caller exceeded 120 requests in 60 seconds.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+      security:
+        -
+          bearerAuth: {}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+            example:
+              shopper_id: 1
+              id_customer: 3
+              code: aaaaaaaaaaaaaaaa
   /api/v1/admin/orders:
     get:
       tags:

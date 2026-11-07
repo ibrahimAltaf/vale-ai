@@ -414,12 +414,23 @@ final class CartOptimizer
 
             $product = 0;
             $weight = 0;
+            $volume = 0;
+            $palletOnly = false;
             foreach ($vendorLines as $vendorLine) {
                 $product += $vendorLine->lineTotalCents;
                 $weight += $vendorLine->weightGrams;
+                $lineOffer = $this->offerIndex[$vendorLine->offerId] ?? null;
+                if (!$lineOffer instanceof OfferOption) {
+                    return null;
+                }
+                $volume += $lineOffer->volumeCm3 * $vendorLine->quantity;
+                $palletOnly = $palletOnly || $lineOffer->palletOnly;
+            }
+            if ($offer->shipping->minOrderEnabled && $product < $offer->shipping->minOrderCents) {
+                return null;
             }
 
-            $quote = $this->shipping->quote($offer->shipping, $product, $weight, $postcode);
+            $quote = $this->shipping->quote($offer->shipping, $product, $weight, $postcode, $volume, $palletOnly);
             if (!$quote->eligible) {
                 return null;
             }

@@ -14,6 +14,7 @@ use Marketplace\Platform\Api\HttpGuard;
 use Marketplace\Platform\Mangopay\HttpGateway;
 use Marketplace\Platform\Platform;
 use Marketplace\Platform\PlatformException;
+use Marketplace\Platform\PrestaShopNativeOrders;
 
 class MarketplaceplatformEntryModuleFrontController extends ModuleFrontController
 {
@@ -67,6 +68,7 @@ class MarketplaceplatformEntryModuleFrontController extends ModuleFrontControlle
                 is_string($adminEmail) ? $adminEmail : '',
                 is_string($adminHash) ? $adminHash : '',
             );
+            $platform->setNativeOrderPort(new PrestaShopNativeOrders());
 
             return (new ApiServer($platform))->handle(
                 (string) ($_SERVER['REQUEST_METHOD'] ?? 'GET'),

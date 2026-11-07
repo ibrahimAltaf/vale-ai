@@ -17,6 +17,25 @@ final class MemoryGateway implements Gateway
 
     public bool $failTransfers = false;
 
+    public function __construct(private readonly ?string $stateFile = null)
+    {
+        if ($this->stateFile === null || !is_file($this->stateFile)) {
+            return;
+        }
+        $decoded = json_decode((string) file_get_contents($this->stateFile), true);
+        if (is_array($decoded)) {
+            $this->resources = $decoded;
+        }
+    }
+
+    public function __destruct()
+    {
+        if ($this->stateFile === null) {
+            return;
+        }
+        file_put_contents($this->stateFile, json_encode($this->resources));
+    }
+
     public function mode(): string
     {
         return 'memory';

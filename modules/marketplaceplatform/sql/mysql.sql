@@ -244,3 +244,51 @@ ALTER TABLE `PREFIX_marketplace_vendor_offer` ADD INDEX `mp_offer_product_active
 ALTER TABLE `PREFIX_marketplace_order` ADD INDEX `mp_order_shopper` (`id_marketplace_shopper`);
 
 ALTER TABLE `PREFIX_marketplace_stock_reservation` ADD INDEX `mp_reservation_expiry` (`status`, `expires_at`);
+
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `city` VARCHAR(128) NULL;
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `brands` VARCHAR(255) NULL;
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `coverage` VARCHAR(255) NULL;
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `logo_path` VARCHAR(255) NULL;
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `min_order_enabled` TINYINT(1) NOT NULL DEFAULT 0;
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `min_order_cents` INT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `vat_rate_percent` DECIMAL(5,2) NOT NULL DEFAULT 0.00;
+ALTER TABLE `PREFIX_marketplace_vendor` ADD COLUMN `processing_fee_percent` DECIMAL(5,2) NOT NULL DEFAULT 0.00;
+
+ALTER TABLE `PREFIX_marketplace_shipping_rule` ADD COLUMN `pallet_base_cents` INT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE `PREFIX_marketplace_shipping_rule` ADD COLUMN `pallet_free_threshold_cents` INT UNSIGNED NULL;
+ALTER TABLE `PREFIX_marketplace_shipping_rule` ADD COLUMN `parcel_max_weight_grams` INT UNSIGNED NULL;
+ALTER TABLE `PREFIX_marketplace_shipping_rule` ADD COLUMN `parcel_max_volume_cm3` INT UNSIGNED NULL;
+ALTER TABLE `PREFIX_marketplace_shipping_rule` ADD COLUMN `pallet_capacity_weight_grams` INT UNSIGNED NULL;
+ALTER TABLE `PREFIX_marketplace_shipping_rule` ADD COLUMN `pallet_capacity_volume_cm3` INT UNSIGNED NULL;
+
+ALTER TABLE `PREFIX_marketplace_vendor_offer` ADD COLUMN `volume_cm3` INT UNSIGNED NOT NULL DEFAULT 0;
+ALTER TABLE `PREFIX_marketplace_vendor_offer` ADD COLUMN `pallet_only` TINYINT(1) NOT NULL DEFAULT 0;
+
+ALTER TABLE `PREFIX_marketplace_commission` ADD COLUMN `vat_cents` INT NOT NULL DEFAULT 0;
+
+ALTER TABLE `PREFIX_marketplace_shopper` ADD COLUMN `id_customer` INT UNSIGNED NULL;
+ALTER TABLE `PREFIX_marketplace_shopper` ADD UNIQUE KEY `mp_shopper_customer` (`id_customer`);
+
+CREATE TABLE IF NOT EXISTS `PREFIX_marketplace_customer_link` (
+  `id_marketplace_customer_link` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `id_marketplace_shopper` INT UNSIGNED NOT NULL,
+  `id_customer` INT UNSIGNED NOT NULL,
+  `code_hash` CHAR(64) NOT NULL,
+  `expires_at` INT UNSIGNED NOT NULL,
+  `consumed` TINYINT(1) NOT NULL DEFAULT 0,
+  `date_add` DATETIME NOT NULL,
+  PRIMARY KEY (`id_marketplace_customer_link`),
+  KEY `mp_customer_link_shopper` (`id_marketplace_shopper`, `consumed`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `PREFIX_marketplace_api_reset` (
+  `id_marketplace_api_reset` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+  `role` VARCHAR(32) NOT NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `token_hash` CHAR(64) NOT NULL,
+  `expires_at` INT UNSIGNED NOT NULL,
+  `consumed` TINYINT(1) NOT NULL DEFAULT 0,
+  `date_add` DATETIME NOT NULL,
+  PRIMARY KEY (`id_marketplace_api_reset`),
+  KEY `mp_api_reset_email` (`role`, `email`, `consumed`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

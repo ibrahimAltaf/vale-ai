@@ -11,6 +11,7 @@ use Marketplace\Catalog\Dto\ImportRow;
 use Marketplace\Catalog\Dto\MatchType;
 use Marketplace\Catalog\Service\CsvOfferParser;
 use Marketplace\Catalog\Service\ProductMatcher;
+use Marketplace\Core\Cache\RedisClient;
 use Marketplace\Core\Domain\Money;
 use Marketplace\Core\Domain\OptimizationStatus;
 use Marketplace\Optimizer\Dto\AllocationLine;
@@ -43,6 +44,8 @@ final class Platform
         private readonly string $adminPasswordHash,
         private readonly int $rateLimit = 120,
         private readonly int $maxCombinations = 200000,
+        private ?NativeOrderPort $nativeOrders = null,
+        private bool $exposeResetTokens = false,
     ) {
         if (!is_dir($this->invoiceDirectory) && !mkdir($this->invoiceDirectory, 0700, true) && !is_dir($this->invoiceDirectory)) {
             throw new PlatformException('storage_unavailable', 'Invoice storage is not available.', 500);
@@ -83,6 +86,16 @@ final class Platform
         Schema::apply($pdo, $prefix);
 
         return new self(new Store($pdo, $prefix), $gateway, $invoiceDirectory, $adminEmail, $adminPasswordHash);
+    }
+
+    public function setNativeOrderPort(?NativeOrderPort $port): void
+    {
+        $this->nativeOrders = $port;
+    }
+
+    public function setExposeResetTokens(bool $expose): void
+    {
+        $this->exposeResetTokens = $expose;
     }
 
     /**
@@ -366,18 +379,26 @@ final class Platform
         $this->assertVendor($actor, $vendorId);
         $current = $this->requireVendor($vendorId);
         $name = array_key_exists('name', $input) ? $this->requiredText($input, 'name', 2, 255) : (string) $current['name'];
+        $minEnabled = array_key_exists('min_order_enabled', $input) ? (int) (bool) $input['min_order_enabled'] : (int) ($current['min_order_enabled'] ?? 0);
+        $minCents = array_key_exists('min_order_cents', $input) ? $this->cents($input['min_order_cents'], 'Minimum order') : (int) ($current['min_order_cents'] ?? 0);
         $this->store->exec(
             'UPDATE ' . $this->t('marketplace_vendor')
-            . ' SET name = :name, description = :description, contact_name = :contact, phone = :phone, date_upd = :now WHERE id_marketplace_vendor = :id',
+            . ' SET name = :name, description = :description, contact_name = :contact, phone = :phone, city = :city, brands = :brands, coverage = :coverage, min_order_enabled = :min_enabled, min_order_cents = :min_cents, date_upd = :now WHERE id_marketplace_vendor = :id',
             [
                 'name' => $name,
                 'description' => array_key_exists('description', $input) ? $this->optionalText($input, 'description', 2000) : $current['description'],
                 'contact' => array_key_exists('contact_name', $input) ? $this->optionalText($input, 'contact_name', 255) : $current['contact_name'],
                 'phone' => array_key_exists('phone', $input) ? $this->optionalText($input, 'phone', 64) : $current['phone'],
+                'city' => array_key_exists('city', $input) ? $this->optionalText($input, 'city', 128) : ($current['city'] ?? null),
+                'brands' => array_key_exists('brands', $input) ? $this->optionalText($input, 'brands', 255) : ($current['brands'] ?? null),
+                'coverage' => array_key_exists('coverage', $input) ? $this->optionalText($input, 'coverage', 255) : ($current['coverage'] ?? null),
+                'min_enabled' => $minEnabled,
+                'min_cents' => $minCents,
                 'now' => $this->store->now(),
                 'id' => $vendorId,
             ]
         );
+        $this->bumpCatalog();
 
         return $this->presentVendor($this->requireVendor($vendorId));
     }
@@ -437,6 +458,13 @@ final class Platform
         $threshold = $input['free_threshold_cents'] ?? null;
         $threshold = $threshold === null || $threshold === '' ? null : $this->cents($threshold, 'Free-shipping threshold');
         $name = $this->requiredText($input, 'name', 2, 128);
+        $palletBase = array_key_exists('pallet_base_cents', $input) ? $this->cents($input['pallet_base_cents'], 'Pallet freight') : 0;
+        $palletFree = $input['pallet_free_threshold_cents'] ?? null;
+        $palletFree = $palletFree === null || $palletFree === '' ? null : $this->cents($palletFree, 'Pallet free-shipping threshold');
+        $parcelMaxWeight = $this->optionalPositive($input, 'parcel_max_weight_grams');
+        $parcelMaxVolume = $this->optionalPositive($input, 'parcel_max_volume_cm3');
+        $palletWeight = $this->optionalPositive($input, 'pallet_capacity_weight_grams');
+        $palletVolume = $this->optionalPositive($input, 'pallet_capacity_volume_cm3');
         $now = $this->store->now();
         $existing = $this->store->one(
             'SELECT id_marketplace_shipping_rule FROM ' . $this->t('marketplace_shipping_rule') . ' WHERE id_marketplace_vendor = :vendor AND name = :name',
@@ -447,12 +475,18 @@ final class Platform
             'free_threshold_cents' => $threshold,
             'surcharge_cents_per_kg' => $surcharge,
             'postcode_prefixes' => implode(',', $clean),
+            'pallet_base_cents' => $palletBase,
+            'pallet_free_threshold_cents' => $palletFree,
+            'parcel_max_weight_grams' => $parcelMaxWeight,
+            'parcel_max_volume_cm3' => $parcelMaxVolume,
+            'pallet_capacity_weight_grams' => $palletWeight,
+            'pallet_capacity_volume_cm3' => $palletVolume,
             'date_upd' => $now,
         ];
         if ($existing !== null) {
             $this->store->exec(
                 'UPDATE ' . $this->t('marketplace_shipping_rule')
-                . ' SET base_cents = :base_cents, free_threshold_cents = :free_threshold_cents, surcharge_cents_per_kg = :surcharge_cents_per_kg, postcode_prefixes = :postcode_prefixes, date_upd = :date_upd WHERE id_marketplace_shipping_rule = :id',
+                . ' SET base_cents = :base_cents, free_threshold_cents = :free_threshold_cents, surcharge_cents_per_kg = :surcharge_cents_per_kg, postcode_prefixes = :postcode_prefixes, pallet_base_cents = :pallet_base_cents, pallet_free_threshold_cents = :pallet_free_threshold_cents, parcel_max_weight_grams = :parcel_max_weight_grams, parcel_max_volume_cm3 = :parcel_max_volume_cm3, pallet_capacity_weight_grams = :pallet_capacity_weight_grams, pallet_capacity_volume_cm3 = :pallet_capacity_volume_cm3, date_upd = :date_upd WHERE id_marketplace_shipping_rule = :id',
                 $values + ['id' => (int) $existing['id_marketplace_shipping_rule']]
             );
             $id = (int) $existing['id_marketplace_shipping_rule'];
@@ -465,6 +499,8 @@ final class Platform
             ]);
         }
 
+        $this->bumpCatalog();
+
         return [
             'id' => $id,
             'vendor_id' => $vendorId,
@@ -473,16 +509,22 @@ final class Platform
             'free_threshold_cents' => $threshold,
             'surcharge_cents_per_kg' => $surcharge,
             'postcode_prefixes' => $clean,
+            'pallet_base_cents' => $palletBase,
+            'pallet_free_threshold_cents' => $palletFree,
+            'parcel_max_weight_grams' => $parcelMaxWeight,
+            'parcel_max_volume_cm3' => $parcelMaxVolume,
+            'pallet_capacity_weight_grams' => $palletWeight,
+            'pallet_capacity_volume_cm3' => $palletVolume,
         ];
     }
 
     /**
      * @return array<string, mixed>
      */
-    public function quote(int $vendorId, string $postcode, int $productCents, int $weightGrams): array
+    public function quote(int $vendorId, string $postcode, int $productCents, int $weightGrams, int $volumeCm3 = 0, bool $palletOnly = false): array
     {
         $postcode = $this->postcode($postcode);
-        if ($productCents < 0 || $weightGrams < 0) {
+        if ($productCents < 0 || $weightGrams < 0 || $volumeCm3 < 0) {
             throw new PlatformException('validation_error', 'Shipping inputs cannot be negative.', 422);
         }
         $rules = $this->store->all(
@@ -494,14 +536,15 @@ final class Platform
             return ['eligible' => false, 'amount_cents' => 0, 'free_shipping' => false, 'reason' => 'This vendor has no shipping rule.'];
         }
         $prefixes = $this->prefixes((string) $chosen['postcode_prefixes']);
-        $threshold = $chosen['free_threshold_cents'];
-        $quote = (new ShippingCalculator())->quote(new ShippingRule(
-            $vendorId,
-            (int) $chosen['base_cents'],
-            $threshold === null || $threshold === '' ? null : (int) $threshold,
-            (int) $chosen['surcharge_cents_per_kg'],
-            $prefixes,
-        ), $productCents, $weightGrams, $postcode);
+        $vendor = $this->requireVendor($vendorId);
+        $quote = (new ShippingCalculator())->quote(
+            $this->shippingRuleFromRow($vendorId, $chosen, $prefixes, $vendor),
+            $productCents,
+            $weightGrams,
+            $postcode,
+            $volumeCm3,
+            $palletOnly,
+        );
 
         return [
             'eligible' => $quote->eligible,
@@ -552,6 +595,8 @@ final class Platform
             'price_cents' => $price,
             'discount_percent' => $discount,
             'weight_grams' => $weight,
+            'volume_cm3' => $this->quantity($input['volume_cm3'] ?? 0),
+            'pallet_only' => !empty($input['pallet_only']) ? 1 : 0,
             'image_url' => $this->imageUrl((string) ($input['image_url'] ?? '')),
             'date_upd' => $now,
         ];
@@ -559,7 +604,7 @@ final class Platform
             $offerId = (int) $existing['id_marketplace_vendor_offer'];
             $this->store->exec(
                 'UPDATE ' . $this->t('marketplace_vendor_offer')
-                . ' SET id_product = :id_product, ean13 = :ean13, brand = :brand, title = :title, description = :description, price_cents = :price_cents, discount_percent = :discount_percent, weight_grams = :weight_grams, image_url = :image_url, date_upd = :date_upd WHERE id_marketplace_vendor_offer = :id',
+                . ' SET id_product = :id_product, ean13 = :ean13, brand = :brand, title = :title, description = :description, price_cents = :price_cents, discount_percent = :discount_percent, weight_grams = :weight_grams, volume_cm3 = :volume_cm3, pallet_only = :pallet_only, image_url = :image_url, date_upd = :date_upd WHERE id_marketplace_vendor_offer = :id',
                 $values + ['id' => $offerId]
             );
             $this->setStockQuantity($offerId, $stock);
@@ -580,6 +625,7 @@ final class Platform
             ]);
             $action = 'created';
         }
+        $this->bumpCatalog();
 
         return $this->presentOffer($this->requireOffer($offerId)) + ['action' => $action];
     }
@@ -606,6 +652,29 @@ final class Platform
             $where[] = 'o.id_marketplace_vendor = :vendor';
             $params['vendor'] = (int) $filters['vendor_id'];
         }
+        if (isset($filters['vendor_ids']) && is_array($filters['vendor_ids'])) {
+            $ids = [];
+            foreach ($filters['vendor_ids'] as $vendorId) {
+                $vendorId = (int) $vendorId;
+                if ($vendorId > 0) {
+                    $ids[$vendorId] = $vendorId;
+                }
+            }
+            if (count($ids) > 20) {
+                throw new PlatformException('validation_error', 'Choose at most 20 vendors.', 422);
+            }
+            if ($ids !== []) {
+                $holders = [];
+                $index = 0;
+                foreach ($ids as $vendorId) {
+                    $key = 'vendors_' . $index;
+                    $holders[] = ':' . $key;
+                    $params[$key] = $vendorId;
+                    $index++;
+                }
+                $where[] = 'o.id_marketplace_vendor IN (' . implode(', ', $holders) . ')';
+            }
+        }
         if (isset($filters['product_id'])) {
             $where[] = 'o.id_product = :product';
             $params['product'] = (int) $filters['product_id'];
@@ -615,6 +684,19 @@ final class Platform
             $params['ean'] = (string) $filters['ean'];
         }
         $sqlWhere = ' WHERE ' . implode(' AND ', $where);
+        $cache = RedisClient::fromEnvironment();
+        $cacheKey = '';
+        if ($cache instanceof RedisClient) {
+            $version = $cache->get('mp:catalog:version') ?? '0';
+            $cacheKey = 'mp:offers:' . $version . ':' . hash('sha256', (string) json_encode([$where, $params, $page, $perPage, $sort, $direction]));
+            $cached = $cache->get($cacheKey);
+            if (is_string($cached)) {
+                $decoded = json_decode($cached, true);
+                if (is_array($decoded) && isset($decoded['data'], $decoded['total'], $decoded['page'], $decoded['per_page'])) {
+                    return $decoded;
+                }
+            }
+        }
         $total = (int) $this->store->value('SELECT COUNT(*) FROM ' . $this->t('marketplace_vendor_offer') . ' o' . $sqlWhere, $params);
         $rows = $this->store->all(
             'SELECT o.*, s.quantity, s.reserved_quantity FROM ' . $this->t('marketplace_vendor_offer') . ' o LEFT JOIN ' . $this->t('marketplace_vendor_stock') . ' s ON s.id_marketplace_vendor_offer = o.id_marketplace_vendor_offer'
@@ -622,12 +704,17 @@ final class Platform
             $params
         );
 
-        return [
+        $result = [
             'data' => array_map(fn (array $row): array => $this->presentOffer($row), $rows),
             'total' => $total,
             'page' => $page,
             'per_page' => $perPage,
         ];
+        if ($cache instanceof RedisClient && $cacheKey !== '') {
+            $cache->set($cacheKey, (string) json_encode($result), 30);
+        }
+
+        return $result;
     }
 
     /**
@@ -672,6 +759,7 @@ final class Platform
             throw new PlatformException('not_found', 'The offer was not found.', 404);
         }
         $this->setStockQuantity($offerId, $this->quantity($quantity));
+        $this->bumpCatalog();
 
         return $this->presentOffer($this->requireOffer($offerId));
     }
@@ -1048,6 +1136,10 @@ final class Platform
             'DELETE FROM ' . $this->t('marketplace_api_hit') . ' WHERE created_at < :cutoff',
             ['cutoff' => $now - 86400]
         );
+        $this->store->exec(
+            'DELETE FROM ' . $this->t('marketplace_audit_log') . ' WHERE date_add < :cutoff',
+            ['cutoff' => date('Y-m-d H:i:s', $now - 365 * 86400)]
+        );
         $released = $this->releaseExpired($now);
         $imports = [];
         $schedules = $this->store->all('SELECT * FROM ' . $this->t('marketplace_import_schedule') . ' WHERE active = 1');
@@ -1167,9 +1259,9 @@ final class Platform
                 $this->csvCell((string) $row['status']),
                 $this->csvCell((string) $row['payment_status']),
                 $this->csvCell((string) $row['product_name']),
-                (string) $row['quantity'],
-                (string) $row['unit_price_cents'],
-                (string) $row['line_total_cents'],
+                $this->csvCell((string) $row['quantity']),
+                $this->csvCell((string) $row['unit_price_cents']),
+                $this->csvCell((string) $row['line_total_cents']),
                 $this->csvCell((string) $row['date_add']),
             ];
         }
@@ -1296,8 +1388,8 @@ final class Platform
             $where = ' WHERE id_marketplace_vendor = :id';
             $params = ['id' => (int) $actor['id']];
         } elseif ($actor['role'] === 'shopper') {
-            $where = ' WHERE kind = :kind AND id_marketplace_order IN (SELECT id_marketplace_order FROM ' . $this->t('marketplace_order') . ' WHERE id_marketplace_shopper = :id)';
-            $params = ['kind' => 'customer', 'id' => (int) $actor['id']];
+            $where = ' WHERE kind IN (:customer_kind, :credit_kind) AND id_marketplace_order IN (SELECT id_marketplace_order FROM ' . $this->t('marketplace_order') . ' WHERE id_marketplace_shopper = :id)';
+            $params = ['customer_kind' => 'customer', 'credit_kind' => 'credit_note', 'id' => (int) $actor['id']];
         } else {
             throw new PlatformException('forbidden', 'Invoices are not available for this account.', 403);
         }
@@ -1584,7 +1676,7 @@ final class Platform
             $name = 'Product ' . $productId;
             $options = [];
             $rows = $this->store->all(
-                'SELECT o.*, s.quantity, s.reserved_quantity, v.code AS vendor_code, v.name AS vendor_name
+                'SELECT o.*, s.quantity, s.reserved_quantity, v.code AS vendor_code, v.name AS vendor_name, v.min_order_enabled, v.min_order_cents
                  FROM ' . $this->t('marketplace_vendor_offer') . ' o
                  INNER JOIN ' . $this->t('marketplace_vendor_stock') . ' s ON s.id_marketplace_vendor_offer = o.id_marketplace_vendor_offer
                  INNER JOIN ' . $this->t('marketplace_vendor') . ' v ON v.id_marketplace_vendor = o.id_marketplace_vendor
@@ -1615,7 +1707,6 @@ final class Platform
                 if ((string) ($row['title'] ?? '') !== '') {
                     $name = (string) $row['title'];
                 }
-                $threshold = $chosen['free_threshold_cents'];
                 $options[] = new OfferOption(
                     (int) $row['id_marketplace_vendor_offer'],
                     $vendorId,
@@ -1625,13 +1716,9 @@ final class Platform
                     Money::afterDiscount((int) $row['price_cents'], $this->percent($row['discount_percent'])),
                     $available,
                     (int) $row['weight_grams'],
-                    new ShippingRule(
-                        $vendorId,
-                        (int) $chosen['base_cents'],
-                        $threshold === null || $threshold === '' ? null : (int) $threshold,
-                        (int) $chosen['surcharge_cents_per_kg'],
-                        $prefixes,
-                    ),
+                    $this->shippingRuleFromRow($vendorId, $chosen, $prefixes, $row),
+                    (int) ($row['volume_cm3'] ?? 0),
+                    (int) ($row['pallet_only'] ?? 0) === 1,
                 );
             }
             $cartLines[] = new CartLine($productId, $name, $line['quantity']);
@@ -1755,6 +1842,7 @@ final class Platform
             'expires_at' => date('Y-m-d H:i:s', time() + 1800),
             'date_add' => $this->store->now(),
         ]);
+        $this->bumpCatalog();
     }
 
     private function releaseReservations(int $vendorOrderId): void
@@ -1780,6 +1868,7 @@ final class Platform
                     'need' => (int) $row['quantity'],
                 ]
             );
+            $this->bumpCatalog();
         }
     }
 
@@ -1934,7 +2023,7 @@ final class Platform
         if ($write) {
             throw new PlatformException('forbidden', 'This invoice cannot be changed by this account.', 403);
         }
-        if ($actor['role'] === 'shopper' && (string) $invoice['kind'] === 'customer') {
+        if ($actor['role'] === 'shopper' && in_array((string) $invoice['kind'], ['customer', 'credit_note'], true)) {
             $order = $this->requireOrder((int) $invoice['id_marketplace_order']);
             if ((int) $order['id_marketplace_shopper'] === (int) $actor['id']) {
                 return;
@@ -1944,9 +2033,20 @@ final class Platform
     }
 
     /**
-     * @param array{role: string, id: int} $actor
      * @param array<string, mixed> $order
      */
+    private function linkedCustomerId(array $order): ?int
+    {
+        $shopperId = (int) ($order['id_marketplace_shopper'] ?? 0);
+        if ($shopperId < 1) {
+            return null;
+        }
+        $shopper = $this->requireShopper($shopperId);
+        $customerId = (int) ($shopper['id_customer'] ?? 0);
+
+        return $customerId > 0 ? $customerId : null;
+    }
+
     private function assertOrderShopper(array $actor, array $order): void
     {
         if ($actor['role'] !== 'shopper' || (int) $order['id_marketplace_shopper'] !== (int) $actor['id']) {
@@ -1971,6 +2071,7 @@ final class Platform
             'status' => (string) $order['status'],
             'payment_status' => (string) $order['payment_status'],
             'shopper_id' => $order['id_marketplace_shopper'] === null ? null : (int) $order['id_marketplace_shopper'],
+            'id_customer' => $this->linkedCustomerId($order),
             'vendor_orders' => array_map(fn (array $row): array => $this->presentVendorOrder($row), $this->vendorOrders((int) $order['id_marketplace_order'])),
         ];
     }
@@ -1992,6 +2093,7 @@ final class Platform
             'grand_cents' => (int) $row['grand_cents'],
             'status' => (string) $row['status'],
             'fulfillment_status' => (string) ($row['fulfillment_status'] ?? 'pending'),
+            'native_order_id' => isset($row['id_order']) && $row['id_order'] !== null && (int) $row['id_order'] > 0 ? (int) $row['id_order'] : null,
             'lines' => array_map(static fn (array $line): array => [
                 'offer_id' => (int) $line['id_marketplace_vendor_offer'],
                 'product_id' => (int) $line['id_product'],
@@ -2064,6 +2166,14 @@ final class Platform
             'description' => (string) ($row['description'] ?? ''),
             'contact_name' => (string) ($row['contact_name'] ?? ''),
             'phone' => (string) ($row['phone'] ?? ''),
+            'city' => (string) ($row['city'] ?? ''),
+            'brands' => (string) ($row['brands'] ?? ''),
+            'coverage' => (string) ($row['coverage'] ?? ''),
+            'has_logo' => (string) ($row['logo_path'] ?? '') !== '',
+            'min_order_enabled' => (int) ($row['min_order_enabled'] ?? 0) === 1,
+            'min_order_cents' => (int) ($row['min_order_cents'] ?? 0),
+            'vat_rate_percent' => $this->percent($row['vat_rate_percent'] ?? '0.00'),
+            'processing_fee_percent' => $this->percent($row['processing_fee_percent'] ?? '0.00'),
         ];
     }
 
@@ -2078,6 +2188,7 @@ final class Platform
             'email' => (string) $row['email'],
             'first_name' => (string) $row['first_name'],
             'last_name' => (string) $row['last_name'],
+            'id_customer' => isset($row['id_customer']) && $row['id_customer'] !== null && $row['id_customer'] !== '' ? (int) $row['id_customer'] : null,
         ];
     }
 
@@ -2467,5 +2578,477 @@ final class Platform
             throw new PlatformException('conflict', $message, 409);
         }
         throw $exception;
+    }
+
+    /**
+     * @param array<string, mixed> $rule
+     * @param list<string> $prefixes
+     * @param array<string, mixed> $vendor
+     */
+    private function shippingRuleFromRow(int $vendorId, array $rule, array $prefixes, array $vendor): ShippingRule
+    {
+        $threshold = $rule['free_threshold_cents'] ?? null;
+        $palletFree = $rule['pallet_free_threshold_cents'] ?? null;
+
+        return new ShippingRule(
+            $vendorId,
+            (int) $rule['base_cents'],
+            $threshold === null || $threshold === '' ? null : (int) $threshold,
+            (int) $rule['surcharge_cents_per_kg'],
+            $prefixes,
+            (int) ($rule['pallet_base_cents'] ?? 0),
+            $palletFree === null || $palletFree === '' ? null : (int) $palletFree,
+            $this->nullableInt($rule['parcel_max_weight_grams'] ?? null),
+            $this->nullableInt($rule['parcel_max_volume_cm3'] ?? null),
+            $this->nullableInt($rule['pallet_capacity_weight_grams'] ?? null),
+            $this->nullableInt($rule['pallet_capacity_volume_cm3'] ?? null),
+            (int) ($vendor['min_order_enabled'] ?? 0) === 1,
+            (int) ($vendor['min_order_cents'] ?? 0),
+        );
+    }
+
+    private function nullableInt(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return (int) $value;
+    }
+
+    /**
+     * @param array<string, mixed> $input
+     */
+    private function optionalPositive(array $input, string $key): ?int
+    {
+        if (!array_key_exists($key, $input) || $input[$key] === null) {
+            return null;
+        }
+        $value = $this->cents($input[$key], $key);
+
+        return $value > 0 ? $value : null;
+    }
+
+    private function bumpCatalog(): void
+    {
+        RedisClient::fromEnvironment()?->incr('mp:catalog:version');
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     * @return array<string, mixed>
+     */
+    public function requestCustomerLink(array $actor, int $customerId): array
+    {
+        $this->assertShopper($actor);
+        if ($customerId < 1) {
+            throw new PlatformException('validation_error', 'A PrestaShop customer id is required.', 422);
+        }
+        $code = bin2hex(random_bytes(8));
+        $this->store->insert('marketplace_customer_link', [
+            'id_marketplace_shopper' => (int) $actor['id'],
+            'id_customer' => $customerId,
+            'code_hash' => hash('sha256', $code),
+            'expires_at' => time() + 1800,
+            'consumed' => 0,
+            'date_add' => $this->store->now(),
+        ]);
+        $this->audit($actor, 'customer.link_requested', 'shopper:' . $actor['id'], 'customer:' . $customerId);
+
+        return ['id_customer' => $customerId, 'code' => $code, 'expires_in' => 1800];
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     * @return array<string, mixed>
+     */
+    public function confirmCustomerLink(array $actor, int $shopperId, int $customerId, string $code): array
+    {
+        $this->assertAdmin($actor);
+        if ($shopperId < 1 || $customerId < 1 || !preg_match('/^[a-f0-9]{16}$/', $code)) {
+            throw new PlatformException('validation_error', 'The link confirmation is invalid.', 422);
+        }
+        $this->requireShopper($shopperId);
+        $taken = $this->store->one(
+            'SELECT id_marketplace_shopper FROM ' . $this->t('marketplace_shopper') . ' WHERE id_customer = :customer AND id_marketplace_shopper <> :shopper',
+            ['customer' => $customerId, 'shopper' => $shopperId]
+        );
+        if ($taken !== null) {
+            throw new PlatformException('conflict', 'That storefront customer is already linked.', 409);
+        }
+        $challenge = $this->store->one(
+            'SELECT * FROM ' . $this->t('marketplace_customer_link')
+            . ' WHERE id_marketplace_shopper = :shopper AND id_customer = :customer AND consumed = 0 AND expires_at >= :now AND code_hash = :hash ORDER BY id_marketplace_customer_link DESC',
+            ['shopper' => $shopperId, 'customer' => $customerId, 'now' => time(), 'hash' => hash('sha256', $code)]
+        );
+        if ($challenge === null) {
+            throw new PlatformException('forbidden', 'The link code does not match this shopper and customer.', 403);
+        }
+        $this->store->exec(
+            'UPDATE ' . $this->t('marketplace_customer_link') . ' SET consumed = 1 WHERE id_marketplace_customer_link = :id',
+            ['id' => (int) $challenge['id_marketplace_customer_link']]
+        );
+        $this->store->exec(
+            'UPDATE ' . $this->t('marketplace_shopper') . ' SET id_customer = :customer WHERE id_marketplace_shopper = :id',
+            ['customer' => $customerId, 'id' => $shopperId]
+        );
+        $this->audit($actor, 'customer.linked', 'shopper:' . $shopperId, 'customer:' . $customerId);
+
+        return $this->presentShopper($this->requireShopper($shopperId));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function requestPasswordReset(string $role, string $email): array
+    {
+        if (!in_array($role, ['shopper', 'vendor'], true)) {
+            throw new PlatformException('validation_error', 'role is invalid.', 422);
+        }
+        $email = $this->email($email);
+        $response = ['accepted' => true];
+        $table = $role === 'vendor' ? 'marketplace_vendor' : 'marketplace_shopper';
+        $row = $this->store->one('SELECT email FROM ' . $this->t($table) . ' WHERE email = :email', ['email' => $email]);
+        if ($row === null) {
+            return $response;
+        }
+        $token = bin2hex(random_bytes(16));
+        $this->store->insert('marketplace_api_reset', [
+            'role' => $role,
+            'email' => $email,
+            'token_hash' => hash('sha256', $token),
+            'expires_at' => time() + 1800,
+            'consumed' => 0,
+            'date_add' => $this->store->now(),
+        ]);
+        $this->audit(['role' => 'system', 'id' => 0], 'auth.reset_requested', $role, $email);
+        if ($this->exposeResetTokens) {
+            $response['token'] = $token;
+        }
+
+        return $response;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function confirmPasswordReset(string $role, string $email, string $token, string $password): array
+    {
+        if (!in_array($role, ['shopper', 'vendor'], true) || !preg_match('/^[a-f0-9]{32}$/', $token)) {
+            throw new PlatformException('validation_error', 'The reset token is invalid.', 422);
+        }
+        $email = $this->email($email);
+        $password = $this->password($password);
+        $row = $this->store->one(
+            'SELECT * FROM ' . $this->t('marketplace_api_reset')
+            . ' WHERE role = :role AND email = :email AND token_hash = :hash AND consumed = 0 AND expires_at >= :now ORDER BY id_marketplace_api_reset DESC',
+            ['role' => $role, 'email' => $email, 'hash' => hash('sha256', $token), 'now' => time()]
+        );
+        if ($row === null) {
+            throw new PlatformException('forbidden', 'The reset token is invalid.', 403);
+        }
+        $table = $role === 'vendor' ? 'marketplace_vendor' : 'marketplace_shopper';
+        $this->store->exec(
+            'UPDATE ' . $this->t($table) . ' SET password_hash = :hash WHERE email = :email',
+            ['hash' => password_hash($password, PASSWORD_DEFAULT), 'email' => $email]
+        );
+        $this->store->exec(
+            'UPDATE ' . $this->t('marketplace_api_reset') . ' SET consumed = 1 WHERE id_marketplace_api_reset = :id',
+            ['id' => (int) $row['id_marketplace_api_reset']]
+        );
+        $this->audit(['role' => 'system', 'id' => 0], 'auth.reset_confirmed', $role, $email);
+
+        return ['reset' => true];
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     * @return array<string, mixed>
+     */
+    public function shopperProfile(array $actor): array
+    {
+        $this->assertShopper($actor);
+
+        return $this->presentShopper($this->requireShopper((int) $actor['id']));
+    }
+
+    /**
+     * @return array{data: list<array<string, mixed>>, total: int, page: int, per_page: int}
+     */
+    public function searchVendors(string $query, int $page, int $perPage): array
+    {
+        [$page, $perPage, $offset] = $this->pageBounds($page, $perPage);
+        $query = trim($query);
+        if (strlen($query) > 80) {
+            throw new PlatformException('validation_error', 'The vendor search is too long.', 422);
+        }
+        $where = ' WHERE status = :status';
+        $params = ['status' => 'active'];
+        if ($query !== '') {
+            $where .= ' AND name LIKE :name';
+            $params['name'] = '%' . str_replace(['%', '_'], '', $query) . '%';
+        }
+        $total = (int) $this->store->value('SELECT COUNT(*) FROM ' . $this->t('marketplace_vendor') . $where, $params);
+        $rows = $this->store->all(
+            'SELECT * FROM ' . $this->t('marketplace_vendor') . $where . ' ORDER BY name LIMIT ' . $perPage . ' OFFSET ' . $offset,
+            $params
+        );
+
+        return ['data' => array_map($this->publicVendorRow(...), $rows), 'total' => $total, 'page' => $page, 'per_page' => $perPage];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function publicVendor(int $vendorId): array
+    {
+        $vendor = $this->requireVendor($vendorId);
+        if ((string) $vendor['status'] !== 'active') {
+            throw new PlatformException('not_found', 'The vendor was not found.', 404);
+        }
+
+        return $this->publicVendorRow($vendor);
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     * @return array<string, mixed>
+     */
+    public function uploadLogo(array $actor, string $encoded): array
+    {
+        $this->assertVendor($actor, (int) $actor['id']);
+        $binary = base64_decode($encoded, true);
+        if (!is_string($binary) || strlen($binary) < 8 || strlen($binary) > 1024 * 1024) {
+            throw new PlatformException('payload_too_large', 'The logo must be a PNG or JPEG under 1 MB.', 413);
+        }
+        $png = str_starts_with($binary, "\x89PNG\r\n\x1a\n");
+        $jpeg = str_starts_with($binary, "\xFF\xD8\xFF");
+        if (!$png && !$jpeg) {
+            throw new PlatformException('validation_error', 'The logo must be a PNG or JPEG.', 422);
+        }
+        $name = bin2hex(random_bytes(16)) . ($png ? '.png' : '.jpg');
+        $directory = dirname($this->invoiceDirectory) . DIRECTORY_SEPARATOR . 'marketplace-logos';
+        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
+            throw new PlatformException('storage_unavailable', 'Logo storage is not available.', 500);
+        }
+        $path = $directory . DIRECTORY_SEPARATOR . $name;
+        if (file_put_contents($path, $binary) === false) {
+            throw new PlatformException('storage_unavailable', 'The logo could not be stored.', 500);
+        }
+        chmod($path, 0600);
+        $this->store->exec(
+            'UPDATE ' . $this->t('marketplace_vendor') . ' SET logo_path = :path, date_upd = :now WHERE id_marketplace_vendor = :id',
+            ['path' => $name, 'now' => $this->store->now(), 'id' => (int) $actor['id']]
+        );
+        $this->audit($actor, 'vendor.logo', 'vendor:' . $actor['id'], $name);
+
+        return ['has_logo' => true];
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     */
+    public function setVatRate(array $actor, int $vendorId, string $percent): array
+    {
+        $this->assertAdmin($actor);
+        $this->requireVendor($vendorId);
+        $normalized = $this->percent($percent);
+        $basis = Money::basisPoints($normalized);
+        if ($basis < 0 || $basis > 10000) {
+            throw new PlatformException('validation_error', 'VAT rate is out of range.', 422);
+        }
+        $this->store->exec(
+            'UPDATE ' . $this->t('marketplace_vendor') . ' SET vat_rate_percent = :rate, date_upd = :now WHERE id_marketplace_vendor = :id',
+            ['rate' => $normalized, 'now' => $this->store->now(), 'id' => $vendorId]
+        );
+        $this->audit($actor, 'vendor.vat', 'vendor:' . $vendorId, $normalized);
+
+        return $this->presentVendor($this->requireVendor($vendorId));
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     * @return array<string, mixed>
+     */
+    public function statement(array $actor, int $vendorId, string $month): array
+    {
+        $this->assertVendor($actor, $vendorId);
+        [$start, $end] = $this->monthWindow($month);
+        $rows = $this->store->all(
+            'SELECT * FROM ' . $this->t('marketplace_commission')
+            . ' WHERE id_marketplace_vendor = :id AND date_add >= :start AND date_add < :end ORDER BY id_marketplace_commission',
+            ['id' => $vendorId, 'start' => $start, 'end' => $end]
+        );
+        $vendor = $this->requireVendor($vendorId);
+        $feePercent = $this->percent($vendor['processing_fee_percent'] ?? '0.00');
+        $lines = [];
+        $commission = 0;
+        $vat = 0;
+        $net = 0;
+        $gross = 0;
+        $processing = 0;
+        foreach ($rows as $row) {
+            $grossCents = (int) $row['gross_cents'];
+            $fee = Money::percentOf(abs($grossCents), $feePercent);
+            if ($grossCents < 0) {
+                $fee = -$fee;
+            }
+            $commission += (int) $row['commission_cents'];
+            $vat += (int) ($row['vat_cents'] ?? 0);
+            $net += (int) $row['net_cents'];
+            $gross += $grossCents;
+            $processing += $fee;
+            $lines[] = [
+                'vendor_order_id' => $row['id_marketplace_vendor_order'] === null ? null : (int) $row['id_marketplace_vendor_order'],
+                'gross_cents' => $grossCents,
+                'commission_cents' => (int) $row['commission_cents'],
+                'vat_cents' => (int) ($row['vat_cents'] ?? 0),
+                'processing_fee_cents' => $fee,
+                'net_cents' => (int) $row['net_cents'],
+                'date' => (string) $row['date_add'],
+            ];
+        }
+
+        return [
+            'month' => $month,
+            'vendor_id' => $vendorId,
+            'gross_cents' => $gross,
+            'commission_cents' => $commission,
+            'vat_cents' => $vat,
+            'processing_fee_cents' => $processing,
+            'net_cents' => $net,
+            'lines' => $lines,
+        ];
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     */
+    public function exportStatement(array $actor, int $vendorId, string $month): string
+    {
+        $statement = $this->statement($actor, $vendorId, $month);
+        $handle = fopen('php://temp', 'w+');
+        if ($handle === false) {
+            throw new PlatformException('storage_unavailable', 'The statement could not be exported.', 500);
+        }
+        fputcsv($handle, ['month', 'vendor_order_id', 'gross_cents', 'commission_cents', 'vat_cents', 'processing_fee_cents', 'net_cents', 'date']);
+        foreach ($statement['lines'] as $line) {
+            fputcsv($handle, [
+                $this->csvCell((string) $statement['month']),
+                $this->csvCell((string) ($line['vendor_order_id'] ?? '')),
+                $this->csvCell((string) $line['gross_cents']),
+                $this->csvCell((string) $line['commission_cents']),
+                $this->csvCell((string) $line['vat_cents']),
+                $this->csvCell((string) $line['processing_fee_cents']),
+                $this->csvCell((string) $line['net_cents']),
+                $this->csvCell((string) $line['date']),
+            ]);
+        }
+        rewind($handle);
+        $csv = (string) stream_get_contents($handle);
+        fclose($handle);
+
+        return $csv;
+    }
+
+    /**
+     * @param array{role: string, id: int} $actor
+     * @return array<string, mixed>
+     */
+    public function createCreditNote(array $actor, int $vendorOrderId): array
+    {
+        $order = $this->requireVendorOrder($vendorOrderId);
+        $this->assertVendor($actor, (int) $order['id_marketplace_vendor']);
+        $refunded = (int) $this->store->value(
+            'SELECT COALESCE(SUM(amount_cents), 0) FROM ' . $this->t('marketplace_refund') . ' WHERE id_marketplace_vendor_order = :id AND status = :status',
+            ['id' => $vendorOrderId, 'status' => 'succeeded']
+        );
+        if ($refunded < 1) {
+            throw new PlatformException('conflict', 'A credit note requires a refund on this shipment.', 409);
+        }
+
+        return $this->createInvoice('vendor', (int) $order['id_marketplace_vendor'], (int) $order['id_marketplace_order'], $vendorOrderId, 'credit_note', $refunded, 'VCN-');
+    }
+
+    /**
+     * @param list<array{vendor_reference: string, id_order: int}> $created
+     */
+    public function publishNativeOrder(int $orderId): void
+    {
+        if (!$this->nativeOrders instanceof NativeOrderPort) {
+            return;
+        }
+        $order = $this->requireOrder($orderId);
+        if ((string) $order['payment_status'] !== 'paid') {
+            return;
+        }
+        $shopperId = (int) ($order['id_marketplace_shopper'] ?? 0);
+        if ($shopperId < 1) {
+            return;
+        }
+        $shopper = $this->requireShopper($shopperId);
+        $customerId = (int) ($shopper['id_customer'] ?? 0);
+        if ($customerId < 1) {
+            return;
+        }
+        $linked = (int) $this->store->value(
+            'SELECT COUNT(*) FROM ' . $this->t('marketplace_vendor_order') . ' WHERE id_marketplace_order = :id AND id_order IS NOT NULL AND id_order <> 0',
+            ['id' => $orderId]
+        );
+        if ($linked > 0) {
+            return;
+        }
+        try {
+            $created = $this->nativeOrders->createForPaidOrder((string) $order['reference'], $customerId);
+            foreach ($created as $row) {
+                $this->store->exec(
+                    'UPDATE ' . $this->t('marketplace_vendor_order') . ' SET id_order = :native_id, shop_reference = :reference WHERE id_marketplace_order = :order AND reference = :reference AND (id_order IS NULL OR id_order = 0)',
+                    ['native_id' => (int) $row['id_order'], 'reference' => (string) $row['vendor_reference'], 'order' => $orderId]
+                );
+            }
+            $this->audit(['role' => 'system', 'id' => 0], 'order.native_created', 'order:' . $orderId, 'customer:' . $customerId);
+        } catch (\Throwable $exception) {
+            $this->audit(['role' => 'system', 'id' => 0], 'order.native_failed', 'order:' . $orderId, $exception->getMessage());
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    private function publicVendorRow(array $row): array
+    {
+        return [
+            'id' => (int) $row['id_marketplace_vendor'],
+            'name' => (string) $row['name'],
+            'slug' => (string) $row['slug'],
+            'description' => (string) ($row['description'] ?? ''),
+            'city' => (string) ($row['city'] ?? ''),
+            'brands' => (string) ($row['brands'] ?? ''),
+            'coverage' => (string) ($row['coverage'] ?? ''),
+            'has_logo' => (string) ($row['logo_path'] ?? '') !== '',
+            'min_order_enabled' => (int) ($row['min_order_enabled'] ?? 0) === 1,
+            'min_order_cents' => (int) ($row['min_order_cents'] ?? 0),
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function monthWindow(string $month): array
+    {
+        if (!preg_match('/^(\d{4})-(\d{2})$/', $month, $matches)) {
+            throw new PlatformException('validation_error', 'Month must be YYYY-MM.', 422);
+        }
+        $year = (int) $matches[1];
+        $monthNumber = (int) $matches[2];
+        if ($monthNumber < 1 || $monthNumber > 12) {
+            throw new PlatformException('validation_error', 'Month must be YYYY-MM.', 422);
+        }
+        $start = sprintf('%04d-%02d-01 00:00:00', $year, $monthNumber);
+        $nextMonth = $monthNumber === 12 ? 1 : $monthNumber + 1;
+        $nextYear = $monthNumber === 12 ? $year + 1 : $year;
+
+        return [$start, sprintf('%04d-%02d-01 00:00:00', $nextYear, $nextMonth)];
     }
 }

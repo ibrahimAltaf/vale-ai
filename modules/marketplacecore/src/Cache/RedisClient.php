@@ -13,8 +13,12 @@ final class RedisClient
     /** @var resource|null */
     private $socket = null;
 
-    public function __construct(private readonly string $host, private readonly int $port = 6379, private readonly float $timeout = 0.25)
-    {
+    public function __construct(
+        private readonly string $host,
+        private readonly int $port = 6379,
+        private readonly float $timeout = 0.25,
+        private readonly string $password = '',
+    ) {
     }
 
     public static function fromEnvironment(): ?self
@@ -23,8 +27,9 @@ final class RedisClient
         if (!is_string($host) || $host === '') {
             return null;
         }
+        $password = getenv('REDIS_PASSWORD');
 
-        return new self($host, (int) (getenv('REDIS_PORT') ?: 6379));
+        return new self($host, (int) (getenv('REDIS_PORT') ?: 6379), 0.25, is_string($password) ? $password : '');
     }
 
     public function get(string $key): ?string
@@ -39,6 +44,13 @@ final class RedisClient
         $response = $this->command(['SET', $key, $value, 'EX', (string) $ttlSeconds]);
 
         return $response === 'OK';
+    }
+
+    public function incr(string $key): int
+    {
+        $value = $this->command(['INCR', $key]);
+
+        return is_int($value) ? $value : 0;
     }
 
     /**
@@ -96,6 +108,15 @@ final class RedisClient
         }
         stream_set_timeout($socket, 0, (int) ($this->timeout * 1000000));
         $this->socket = $socket;
+        if ($this->password !== '') {
+            $auth = $this->command(['AUTH', $this->password]);
+            if ($auth !== 'OK') {
+                $this->socket = null;
+                fclose($socket);
+
+                return null;
+            }
+        }
 
         return $this->socket;
     }

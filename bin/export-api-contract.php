@@ -169,7 +169,7 @@ function description(array $route): string
 function successStatus(string $name): int
 {
     return match ($name) {
-        'registerVendor', 'registerCustomer', 'shippingRule', 'upsertOffer', 'checkout', 'identity', 'refund', 'payout', 'import', 'scheduleImport', 'createInvoice', 'commissionInvoice' => 201,
+        'registerVendor', 'registerCustomer', 'shippingRule', 'upsertOffer', 'checkout', 'identity', 'refund', 'payout', 'import', 'scheduleImport', 'createInvoice', 'commissionInvoice', 'linkChallenge', 'creditNote' => 201,
         'pay' => 201,
         default => 200,
     };
@@ -177,7 +177,7 @@ function successStatus(string $name): int
 
 function isListRoute(string $name): bool
 {
-    return in_array($name, ['products', 'offers', 'inventory', 'orders', 'vendorOrders', 'invoices', 'adminVendors', 'adminOrders'], true);
+    return in_array($name, ['products', 'offers', 'inventory', 'orders', 'vendorOrders', 'invoices', 'adminVendors', 'adminOrders', 'vendorSearch'], true);
 }
 
 /**
@@ -185,12 +185,23 @@ function isListRoute(string $name): bool
  */
 function queryParameters(string $name): array
 {
+    if ($name === 'vendorSearch') {
+        return [
+            ['name' => 'q', 'in' => 'query', 'schema' => ['type' => 'string', 'maxLength' => 80]],
+        ];
+    }
+    if ($name === 'statement' || $name === 'exportStatement') {
+        return [
+            ['name' => 'month', 'in' => 'query', 'schema' => ['type' => 'string', 'pattern' => '^[0-9]{4}-[0-9]{2}$']],
+        ];
+    }
     if ($name !== 'offers') {
         return [];
     }
 
     return [
         ['name' => 'vendor_id', 'in' => 'query', 'schema' => ['type' => 'integer']],
+        ['name' => 'vendor_ids', 'in' => 'query', 'schema' => ['type' => 'string', 'description' => 'Comma-separated vendor ids, at most 20.']],
         ['name' => 'product_id', 'in' => 'query', 'schema' => ['type' => 'integer']],
         ['name' => 'ean', 'in' => 'query', 'schema' => ['type' => 'string']],
         ['name' => 'sort', 'in' => 'query', 'schema' => ['type' => 'string', 'enum' => ['id', 'price_cents', 'sku']]],
@@ -212,9 +223,13 @@ function exampleBody(string $name): array
         'registerVendor' => ['name' => 'Example Goods', 'email' => 'vendor@example.com', 'password' => 'replace-with-12-plus', 'code' => 'E'],
         'registerCustomer' => ['email' => 'shopper@example.com', 'password' => 'replace-with-12-plus', 'first_name' => 'Nora', 'last_name' => 'Keller'],
         'login' => ['role' => 'shopper', 'email' => 'shopper@example.com', 'password' => 'replace-with-12-plus'],
-        'updateVendor' => ['name' => 'Example Goods', 'description' => 'Wholesale pantry', 'contact_name' => 'Eva', 'phone' => '+4930123456'],
-        'shippingRule' => ['name' => 'Nationwide', 'base_cents' => 500, 'free_threshold_cents' => 5000, 'surcharge_cents_per_kg' => 0, 'postcode_prefixes' => []],
-        'upsertOffer' => ['product_id' => 2, 'sku' => 'MUESLI-1KG', 'ean' => '', 'title' => 'Alpine Muesli 1kg', 'price_cents' => 3600, 'discount' => '0', 'stock' => 8, 'weight_grams' => 1000],
+        'passwordReset' => ['role' => 'shopper', 'email' => 'shopper@example.com'],
+        'passwordConfirm' => ['role' => 'shopper', 'email' => 'shopper@example.com', 'token' => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'password' => 'replacement-password-1'],
+        'linkChallenge' => ['id_customer' => 3],
+        'confirmLink' => ['shopper_id' => 1, 'id_customer' => 3, 'code' => 'aaaaaaaaaaaaaaaa'],
+        'updateVendor' => ['name' => 'Example Goods', 'description' => 'Wholesale pantry', 'contact_name' => 'Eva', 'phone' => '+4930123456', 'city' => 'Berlin', 'brands' => 'Alpine', 'coverage' => 'DE', 'min_order_enabled' => false, 'min_order_cents' => 0],
+        'shippingRule' => ['name' => 'Nationwide', 'base_cents' => 500, 'free_threshold_cents' => 5000, 'surcharge_cents_per_kg' => 0, 'postcode_prefixes' => [], 'pallet_base_cents' => 6500, 'pallet_free_threshold_cents' => null],
+        'upsertOffer' => ['product_id' => 2, 'sku' => 'MUESLI-1KG', 'ean' => '', 'title' => 'Alpine Muesli 1kg', 'price_cents' => 3600, 'discount' => '0', 'stock' => 8, 'weight_grams' => 1000, 'volume_cm3' => 1200, 'pallet_only' => false],
         'setStock' => ['quantity' => 8],
         'quote' => ['vendor_id' => 1, 'postcode' => '10115', 'product_cents' => 1000, 'weight_grams' => 1000],
         'optimize', 'validate' => ['postcode' => '10115', 'lines' => [['product_id' => 2, 'quantity' => 1], ['product_id' => 3, 'quantity' => 1]]],
@@ -226,8 +241,10 @@ function exampleBody(string $name): array
         'payout' => ['amount_cents' => 1000],
         'import', 'scheduleImport' => ['filename' => 'offers.csv', 'csv' => "vendor,sku,ean,brand,title,description,price,discount,stock,weight,image_url\nE,SOAP-1,,Clean,Soap,Bar,3.40,0,10,0.5,https://cdn.example/soap.jpg\n", 'interval_minutes' => 60],
         'uploadInvoice' => ['content_base64' => 'JVBERi0xLjQK'],
-        'createInvoice', 'commissionInvoice' => ['vendor_order_id' => 1],
+        'uploadLogo' => ['content_base64' => 'iVBORw0KGgo='],
+        'createInvoice', 'commissionInvoice', 'creditNote' => ['vendor_order_id' => 1],
         'setCommission' => ['commission_percent' => '10.00'],
+        'setVat' => ['vat_rate_percent' => '22.00'],
         default => new stdClass() === null ? [] : [],
     };
 }
@@ -264,8 +281,54 @@ function buildCollection(array $routes): array
             'description' => 'Generated from Marketplace\\Platform\\Api\\RouteMap. No live credentials are included.',
             'schema' => 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
         ],
+        'event' => [[
+            'listen' => 'prerequest',
+            'script' => [
+                'type' => 'text/javascript',
+                'exec' => authScript(),
+            ],
+        ]],
         'item' => $items,
         'variable' => environmentValues('http://localhost:8080'),
+    ];
+}
+
+/**
+ * @return list<string>
+ */
+function authScript(): array
+{
+    return [
+        'if (pm.environment.get("auth_ready") === "yes") { return; }',
+        'const base = pm.environment.get("base_url") || pm.collectionVariables.get("base_url");',
+        'const password = "replace-with-12-plus";',
+        'const login = (role, email) => new Promise((resolve, reject) => {',
+        '  pm.sendRequest({',
+        '    url: base + "/api/v1/auth/login",',
+        '    method: "POST",',
+        '    header: { "Content-Type": "application/json", "Accept": "application/json" },',
+        '    body: { mode: "raw", raw: JSON.stringify({ role: role, email: email, password: password }) }',
+        '  }, (err, res) => {',
+        '    if (err || !res || res.code !== 200) { reject(new Error(role + " login failed")); return; }',
+        '    const token = res.json().data && res.json().data.token;',
+        '    if (!token) { reject(new Error(role + " token missing")); return; }',
+        '    pm.environment.set(role + "_token", token);',
+        '    pm.collectionVariables.set(role + "_token", token);',
+        '    resolve(token);',
+        '  });',
+        '});',
+        'Promise.all([',
+        '  login("admin", "admin@example.com"),',
+        '  login("vendor", "vendor@example.com"),',
+        '  login("shopper", "shopper@example.com"),',
+        '  login("shopper", "shopper@example.com")',
+        ']).then((tokens) => {',
+        '  pm.environment.set("token", tokens[2]);',
+        '  pm.environment.set("logout_token", tokens[3]);',
+        '  pm.collectionVariables.set("token", tokens[2]);',
+        '  pm.collectionVariables.set("logout_token", tokens[3]);',
+        '  pm.environment.set("auth_ready", "yes");',
+        '}).catch((error) => { console.log(String(error)); });',
     ];
 }
 
@@ -280,7 +343,7 @@ function requestItem(array $route): array
         $headers[] = ['key' => 'Content-Type', 'value' => 'application/json'];
     }
     if ($route['roles'] !== []) {
-        $headers[] = ['key' => 'Authorization', 'value' => 'Bearer {{token}}'];
+        $headers[] = ['key' => 'Authorization', 'value' => 'Bearer {{' . authToken($route) . '}}'];
     }
     if (needsIdempotency($route['name'])) {
         $headers[] = ['key' => 'Idempotency-Key', 'value' => 'demo-' . $route['name'] . '-0001'];
@@ -324,6 +387,25 @@ function requestItem(array $route): array
             ],
         ]],
     ];
+}
+
+/**
+ * @param array{name: string, roles: list<string>} $route
+ */
+function authToken(array $route): string
+{
+    if ($route['name'] === 'logout') {
+        return 'logout_token';
+    }
+    $roles = $route['roles'];
+    if ($roles === ['admin']) {
+        return 'admin_token';
+    }
+    if (in_array('vendor', $roles, true) && !in_array('shopper', $roles, true)) {
+        return 'vendor_token';
+    }
+
+    return 'shopper_token';
 }
 
 function variableFor(string $parameter, string $path): string
@@ -370,6 +452,10 @@ function environmentValues(string $baseUrl): array
     $values = [
         'base_url' => $baseUrl,
         'token' => '',
+        'admin_token' => '',
+        'vendor_token' => '',
+        'shopper_token' => '',
+        'logout_token' => '',
         'vendor_id' => '1',
         'order_id' => '1',
         'vendor_order_id' => '1',

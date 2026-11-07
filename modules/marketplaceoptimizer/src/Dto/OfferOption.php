@@ -18,6 +18,8 @@ final class OfferOption
         public readonly int $stock,
         public readonly int $weightGrams,
         public readonly ShippingRule $shipping,
+        public readonly int $volumeCm3 = 0,
+        public readonly bool $palletOnly = false,
     ) {
     }
 }

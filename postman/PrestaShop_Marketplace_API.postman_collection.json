@@ -4,6 +4,46 @@
         "description": "Generated from Marketplace\\Platform\\Api\\RouteMap. No live credentials are included.",
         "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
     },
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    "if (pm.environment.get(\"auth_ready\") === \"yes\") { return; }",
+                    "const base = pm.environment.get(\"base_url\") || pm.collectionVariables.get(\"base_url\");",
+                    "const password = \"replace-with-12-plus\";",
+                    "const login = (role, email) => new Promise((resolve, reject) => {",
+                    "  pm.sendRequest({",
+                    "    url: base + \"/api/v1/auth/login\",",
+                    "    method: \"POST\",",
+                    "    header: { \"Content-Type\": \"application/json\", \"Accept\": \"application/json\" },",
+                    "    body: { mode: \"raw\", raw: JSON.stringify({ role: role, email: email, password: password }) }",
+                    "  }, (err, res) => {",
+                    "    if (err || !res || res.code !== 200) { reject(new Error(role + \" login failed\")); return; }",
+                    "    const token = res.json().data && res.json().data.token;",
+                    "    if (!token) { reject(new Error(role + \" token missing\")); return; }",
+                    "    pm.environment.set(role + \"_token\", token);",
+                    "    pm.collectionVariables.set(role + \"_token\", token);",
+                    "    resolve(token);",
+                    "  });",
+                    "});",
+                    "Promise.all([",
+                    "  login(\"admin\", \"admin@example.com\"),",
+                    "  login(\"vendor\", \"vendor@example.com\"),",
+                    "  login(\"shopper\", \"shopper@example.com\"),",
+                    "  login(\"shopper\", \"shopper@example.com\")",
+                    "]).then((tokens) => {",
+                    "  pm.environment.set(\"token\", tokens[2]);",
+                    "  pm.environment.set(\"logout_token\", tokens[3]);",
+                    "  pm.collectionVariables.set(\"token\", tokens[2]);",
+                    "  pm.collectionVariables.set(\"logout_token\", tokens[3]);",
+                    "  pm.environment.set(\"auth_ready\", \"yes\");",
+                    "}).catch((error) => { console.log(String(error)); });"
+                ]
+            }
+        }
+    ],
     "item": [
         {
             "name": "Health",
@@ -195,7 +235,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{logout_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/auth/logout",
@@ -228,12 +268,273 @@
                             }
                         }
                     ]
+                },
+                {
+                    "name": "POST /api/v1/auth/password-reset",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/auth/password-reset",
+                        "description": "Request a password reset without revealing whether the account exists. Permission: auth.reset.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"role\": \"shopper\",\n    \"email\": \"shopper@example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/auth/password-reset/confirm",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/auth/password-reset/confirm",
+                        "description": "Set a new password with a reset token. Permission: auth.reset.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"role\": \"shopper\",\n    \"email\": \"shopper@example.com\",\n    \"token\": \"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\n    \"password\": \"replacement-password-1\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Customers",
+            "item": [
+                {
+                    "name": "GET /api/v1/customers/me",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{shopper_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/customers/me",
+                        "description": "Read the authenticated customer and any linked storefront id. Permission: customer.read."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/customers/me/link-challenges",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{shopper_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/customers/me/link-challenges",
+                        "description": "Start a link to a PrestaShop customer. Email alone is not accepted. Permission: customer.link.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"id_customer\": 3\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/admin/customers/links",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/admin/customers/links",
+                        "description": "Confirm a customer link with the one-time code. Email matching is not used. Permission: admin.customers.link.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"shopper_id\": 1,\n    \"id_customer\": 3,\n    \"code\": \"aaaaaaaaaaaaaaaa\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
                 }
             ]
         },
         {
             "name": "Vendors",
             "item": [
+                {
+                    "name": "GET /api/v1/vendors",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/vendors",
+                        "description": "Search active public vendor profiles by name. Permission: vendors.search."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
                 {
                     "name": "GET /api/v1/vendors/me",
                     "request": {
@@ -245,7 +546,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me",
@@ -285,20 +586,101 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me",
                         "description": "Update the authenticated vendor profile. Permission: vendor.update.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name\": \"Example Goods\",\n    \"description\": \"Wholesale pantry\",\n    \"contact_name\": \"Eva\",\n    \"phone\": \"+4930123456\"\n}",
+                            "raw": "{\n    \"name\": \"Example Goods\",\n    \"description\": \"Wholesale pantry\",\n    \"contact_name\": \"Eva\",\n    \"phone\": \"+4930123456\",\n    \"city\": \"Berlin\",\n    \"brands\": \"Alpine\",\n    \"coverage\": \"DE\",\n    \"min_order_enabled\": false,\n    \"min_order_cents\": 0\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
                                 }
                             }
                         }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/vendors/me/logo",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{vendor_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/vendors/me/logo",
+                        "description": "Upload a PNG or JPEG logo. Permission: vendor.logo.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"content_base64\": \"iVBORw0KGgo=\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/vendors/{id}",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/vendors/{{vendor_id}}",
+                        "description": "Read one active public vendor profile. Permission: vendors.read."
                     },
                     "event": [
                         {
@@ -339,14 +721,14 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/shipping-rules",
                         "description": "Create or update a vendor shipping rule. Permission: shipping.write.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"name\": \"Nationwide\",\n    \"base_cents\": 500,\n    \"free_threshold_cents\": 5000,\n    \"surcharge_cents_per_kg\": 0,\n    \"postcode_prefixes\": []\n}",
+                            "raw": "{\n    \"name\": \"Nationwide\",\n    \"base_cents\": 500,\n    \"free_threshold_cents\": 5000,\n    \"surcharge_cents_per_kg\": 0,\n    \"postcode_prefixes\": [],\n    \"pallet_base_cents\": 6500,\n    \"pallet_free_threshold_cents\": null\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -388,7 +770,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/shipping/quote",
@@ -438,7 +820,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/catalog/products",
@@ -479,7 +861,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/offers",
@@ -519,14 +901,14 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/offers",
                         "description": "Create or update an offer for the authenticated vendor. Permission: offers.write.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"product_id\": 2,\n    \"sku\": \"MUESLI-1KG\",\n    \"ean\": \"\",\n    \"title\": \"Alpine Muesli 1kg\",\n    \"price_cents\": 3600,\n    \"discount\": \"0\",\n    \"stock\": 8,\n    \"weight_grams\": 1000\n}",
+                            "raw": "{\n    \"product_id\": 2,\n    \"sku\": \"MUESLI-1KG\",\n    \"ean\": \"\",\n    \"title\": \"Alpine Muesli 1kg\",\n    \"price_cents\": 3600,\n    \"discount\": \"0\",\n    \"stock\": 8,\n    \"weight_grams\": 1000,\n    \"volume_cm3\": 1200,\n    \"pallet_only\": false\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -569,7 +951,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/inventory",
@@ -609,7 +991,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/inventory/{{offer_id}}",
@@ -663,7 +1045,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/cart/optimize",
@@ -712,7 +1094,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/cart/validate",
@@ -766,7 +1148,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             },
                             {
                                 "key": "Idempotency-Key",
@@ -820,7 +1202,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/orders",
@@ -856,7 +1238,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/orders/{{order_id}}",
@@ -896,7 +1278,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/orders/{{order_id}}/cancel",
@@ -941,7 +1323,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/orders",
@@ -981,7 +1363,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/orders/{{vendor_id}}/fulfill",
@@ -1035,7 +1417,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             },
                             {
                                 "key": "Idempotency-Key",
@@ -1084,7 +1466,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{shopper_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/payments/{{payment_id}}",
@@ -1174,7 +1556,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/mangopay/identity",
@@ -1223,7 +1605,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/mangopay/kyc",
@@ -1268,7 +1650,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/mangopay/wallets",
@@ -1313,7 +1695,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             },
                             {
                                 "key": "Idempotency-Key",
@@ -1371,7 +1753,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             },
                             {
                                 "key": "Idempotency-Key",
@@ -1420,7 +1802,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/payouts",
@@ -1460,7 +1842,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/payouts/{{payout_id}}/process",
@@ -1510,11 +1892,441 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/commissions",
                         "description": "Read the vendor commission ledger and available balance. Permission: commissions.read."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/vendors/me/statements",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{vendor_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/vendors/me/statements",
+                        "description": "Read a monthly commission statement. Permission: statements.read."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/vendors/me/statements/export",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{vendor_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/vendors/me/statements/export",
+                        "description": "Export a monthly commission statement as CSV. Permission: statements.export."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Invoices",
+            "item": [
+                {
+                    "name": "POST /api/v1/vendors/me/credit-notes",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{vendor_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/vendors/me/credit-notes",
+                        "description": "Create a credit note for a refunded shipment. Permission: invoices.credit.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"vendor_order_id\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/vendors/me/invoices",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{vendor_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/vendors/me/invoices",
+                        "description": "Create a pending customer invoice for a vendor sub-order. Permission: invoices.create.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"vendor_order_id\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/invoices/{id}/issue",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{vendor_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}/issue",
+                        "description": "Mark an invoice as issued. Permission: invoices.issue.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "[]",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/invoices/{id}/upload",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{vendor_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}/upload",
+                        "description": "Upload the invoice PDF. Permission: invoices.upload.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"content_base64\": \"JVBERi0xLjQK\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/invoices",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{shopper_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/invoices",
+                        "description": "List invoices visible to the caller. Permission: invoices.read."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/invoices/{id}",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{shopper_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}",
+                        "description": "Read one invoice. Permission: invoices.read."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "GET /api/v1/invoices/{id}/download",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{shopper_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}/download",
+                        "description": "Download an issued invoice file. Permission: invoices.download."
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/admin/invoices/commission",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/admin/invoices/commission",
+                        "description": "Create the marketplace commission invoice for a vendor sub-order. Permission: invoices.commission.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"vendor_order_id\": 1\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
                     },
                     "event": [
                         {
@@ -1551,7 +2363,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/reconciliation",
@@ -1587,7 +2399,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/audit",
@@ -1623,7 +2435,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/vendors",
@@ -1663,7 +2475,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/vendors/{{vendor_id}}/approve",
@@ -1712,7 +2524,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/vendors/{{vendor_id}}/suspend",
@@ -1761,7 +2573,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/vendors/{{vendor_id}}/commission",
@@ -1769,6 +2581,55 @@
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"commission_percent\": \"10.00\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "type": "text/javascript",
+                                "exec": [
+                                    "pm.test(\"JSON object\", function () {",
+                                    "  pm.response.to.be.json;",
+                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
+                                    "});",
+                                    "pm.test(\"success data or error envelope\", function () {",
+                                    "  const body = pm.response.json();",
+                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "POST /api/v1/admin/vendors/{id}/vat",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Authorization",
+                                "value": "Bearer {{admin_token}}"
+                            }
+                        ],
+                        "url": "{{base_url}}/api/v1/admin/vendors/{{vendor_id}}/vat",
+                        "description": "Set the VAT rate applied to commission. Permission: admin.vendors.vat.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"vat_rate_percent\": \"22.00\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"
@@ -1806,7 +2667,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/orders",
@@ -1842,7 +2703,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/permissions",
@@ -1882,7 +2743,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{admin_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/admin/maintenance",
@@ -1936,7 +2797,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/imports",
@@ -1981,7 +2842,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/imports",
@@ -2021,7 +2882,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/import-schedules",
@@ -2066,7 +2927,7 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/exports/offers",
@@ -2102,320 +2963,11 @@
                             },
                             {
                                 "key": "Authorization",
-                                "value": "Bearer {{token}}"
+                                "value": "Bearer {{vendor_token}}"
                             }
                         ],
                         "url": "{{base_url}}/api/v1/vendors/me/exports/orders",
                         "description": "Export vendor orders as CSV. Permission: exports.orders."
-                    },
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test(\"JSON object\", function () {",
-                                    "  pm.response.to.be.json;",
-                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
-                                    "});",
-                                    "pm.test(\"success data or error envelope\", function () {",
-                                    "  const body = pm.response.json();",
-                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
-                                    "});"
-                                ]
-                            }
-                        }
-                    ]
-                }
-            ]
-        },
-        {
-            "name": "Invoices",
-            "item": [
-                {
-                    "name": "POST /api/v1/vendors/me/invoices",
-                    "request": {
-                        "method": "POST",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{token}}"
-                            }
-                        ],
-                        "url": "{{base_url}}/api/v1/vendors/me/invoices",
-                        "description": "Create a pending customer invoice for a vendor sub-order. Permission: invoices.create.",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"vendor_order_id\": 1\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        }
-                    },
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test(\"JSON object\", function () {",
-                                    "  pm.response.to.be.json;",
-                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
-                                    "});",
-                                    "pm.test(\"success data or error envelope\", function () {",
-                                    "  const body = pm.response.json();",
-                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
-                                    "});"
-                                ]
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "POST /api/v1/invoices/{id}/issue",
-                    "request": {
-                        "method": "POST",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{token}}"
-                            }
-                        ],
-                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}/issue",
-                        "description": "Mark an invoice as issued. Permission: invoices.issue.",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "[]",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        }
-                    },
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test(\"JSON object\", function () {",
-                                    "  pm.response.to.be.json;",
-                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
-                                    "});",
-                                    "pm.test(\"success data or error envelope\", function () {",
-                                    "  const body = pm.response.json();",
-                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
-                                    "});"
-                                ]
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "POST /api/v1/invoices/{id}/upload",
-                    "request": {
-                        "method": "POST",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{token}}"
-                            }
-                        ],
-                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}/upload",
-                        "description": "Upload the invoice PDF. Permission: invoices.upload.",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"content_base64\": \"JVBERi0xLjQK\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        }
-                    },
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test(\"JSON object\", function () {",
-                                    "  pm.response.to.be.json;",
-                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
-                                    "});",
-                                    "pm.test(\"success data or error envelope\", function () {",
-                                    "  const body = pm.response.json();",
-                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
-                                    "});"
-                                ]
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "GET /api/v1/invoices",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{token}}"
-                            }
-                        ],
-                        "url": "{{base_url}}/api/v1/invoices",
-                        "description": "List invoices visible to the caller. Permission: invoices.read."
-                    },
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test(\"JSON object\", function () {",
-                                    "  pm.response.to.be.json;",
-                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
-                                    "});",
-                                    "pm.test(\"success data or error envelope\", function () {",
-                                    "  const body = pm.response.json();",
-                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
-                                    "});"
-                                ]
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "GET /api/v1/invoices/{id}",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{token}}"
-                            }
-                        ],
-                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}",
-                        "description": "Read one invoice. Permission: invoices.read."
-                    },
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test(\"JSON object\", function () {",
-                                    "  pm.response.to.be.json;",
-                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
-                                    "});",
-                                    "pm.test(\"success data or error envelope\", function () {",
-                                    "  const body = pm.response.json();",
-                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
-                                    "});"
-                                ]
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "GET /api/v1/invoices/{id}/download",
-                    "request": {
-                        "method": "GET",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{token}}"
-                            }
-                        ],
-                        "url": "{{base_url}}/api/v1/invoices/{{invoice_id}}/download",
-                        "description": "Download an issued invoice file. Permission: invoices.download."
-                    },
-                    "event": [
-                        {
-                            "listen": "test",
-                            "script": {
-                                "type": "text/javascript",
-                                "exec": [
-                                    "pm.test(\"JSON object\", function () {",
-                                    "  pm.response.to.be.json;",
-                                    "  pm.expect(pm.response.json()).to.be.an(\"object\");",
-                                    "});",
-                                    "pm.test(\"success data or error envelope\", function () {",
-                                    "  const body = pm.response.json();",
-                                    "  pm.expect(body.data !== undefined || (body.error && body.error.code)).to.be.ok;",
-                                    "});"
-                                ]
-                            }
-                        }
-                    ]
-                },
-                {
-                    "name": "POST /api/v1/admin/invoices/commission",
-                    "request": {
-                        "method": "POST",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Content-Type",
-                                "value": "application/json"
-                            },
-                            {
-                                "key": "Authorization",
-                                "value": "Bearer {{token}}"
-                            }
-                        ],
-                        "url": "{{base_url}}/api/v1/admin/invoices/commission",
-                        "description": "Create the marketplace commission invoice for a vendor sub-order. Permission: invoices.commission.",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"vendor_order_id\": 1\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        }
                     },
                     "event": [
                         {
@@ -2447,6 +2999,26 @@
         },
         {
             "key": "token",
+            "value": "",
+            "enabled": true
+        },
+        {
+            "key": "admin_token",
+            "value": "",
+            "enabled": true
+        },
+        {
+            "key": "vendor_token",
+            "value": "",
+            "enabled": true
+        },
+        {
+            "key": "shopper_token",
+            "value": "",
+            "enabled": true
+        },
+        {
+            "key": "logout_token",
             "value": "",
             "enabled": true
         },

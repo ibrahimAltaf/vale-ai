@@ -162,6 +162,42 @@ final class ApiServer
 
             return $this->data(200, ['revoked' => true]);
         }
+        if ($name === 'passwordReset') {
+            return $this->data(200, $this->platform->requestPasswordReset((string) ($body['role'] ?? ''), (string) ($body['email'] ?? '')));
+        }
+        if ($name === 'passwordConfirm') {
+            return $this->data(200, $this->platform->confirmPasswordReset((string) ($body['role'] ?? ''), (string) ($body['email'] ?? ''), (string) ($body['token'] ?? ''), (string) ($body['password'] ?? '')));
+        }
+        if ($name === 'customerMe') {
+            return $this->data(200, $this->platform->shopperProfile($actor));
+        }
+        if ($name === 'linkChallenge') {
+            return $this->data(201, $this->platform->requestCustomerLink($actor, (int) ($body['id_customer'] ?? 0)));
+        }
+        if ($name === 'confirmLink') {
+            return $this->data(200, $this->platform->confirmCustomerLink($actor, (int) ($body['shopper_id'] ?? 0), (int) ($body['id_customer'] ?? 0), (string) ($body['code'] ?? '')));
+        }
+        if ($name === 'vendorSearch') {
+            return $this->page($this->platform->searchVendors((string) ($query['q'] ?? ''), $page, $perPage));
+        }
+        if ($name === 'publicVendor') {
+            return $this->data(200, $this->platform->publicVendor((int) $params['id']));
+        }
+        if ($name === 'uploadLogo') {
+            return $this->data(200, $this->platform->uploadLogo($actor, (string) ($body['content_base64'] ?? '')));
+        }
+        if ($name === 'statement') {
+            return $this->data(200, $this->platform->statement($actor, (int) $actor['id'], (string) ($query['month'] ?? '')));
+        }
+        if ($name === 'exportStatement') {
+            return $this->data(200, ['filename' => 'statement.csv', 'content' => $this->platform->exportStatement($actor, (int) $actor['id'], (string) ($query['month'] ?? ''))]);
+        }
+        if ($name === 'creditNote') {
+            return $this->data(201, $this->platform->createCreditNote($actor, (int) ($body['vendor_order_id'] ?? 0)));
+        }
+        if ($name === 'setVat') {
+            return $this->data(200, $this->platform->setVatRate($actor, (int) $params['id'], (string) ($body['vat_rate_percent'] ?? '')));
+        }
         if ($name === 'vendorMe') {
             return $this->data(200, $this->platform->vendorProfile($actor, (int) $actor['id']));
         }
@@ -178,6 +214,9 @@ final class ApiServer
             $filters = [];
             if (isset($query['vendor_id'])) {
                 $filters['vendor_id'] = (int) $query['vendor_id'];
+            }
+            if (isset($query['vendor_ids'])) {
+                $filters['vendor_ids'] = array_map('intval', explode(',', (string) $query['vendor_ids']));
             }
             if (isset($query['product_id'])) {
                 $filters['product_id'] = (int) $query['product_id'];
@@ -198,7 +237,14 @@ final class ApiServer
             return $this->data(200, $this->platform->setStock($actor, (int) $actor['id'], (int) $params['offerId'], $body['quantity'] ?? -1));
         }
         if ($name === 'quote') {
-            return $this->data(200, $this->platform->quote((int) ($body['vendor_id'] ?? 0), (string) ($body['postcode'] ?? ''), (int) ($body['product_cents'] ?? 0), (int) ($body['weight_grams'] ?? 0)));
+            return $this->data(200, $this->platform->quote(
+                (int) ($body['vendor_id'] ?? 0),
+                (string) ($body['postcode'] ?? ''),
+                (int) ($body['product_cents'] ?? 0),
+                (int) ($body['weight_grams'] ?? 0),
+                (int) ($body['volume_cm3'] ?? 0),
+                (bool) ($body['pallet_only'] ?? false),
+            ));
         }
         if ($name === 'optimize' || $name === 'validate') {
             $lines = $body['lines'] ?? [];

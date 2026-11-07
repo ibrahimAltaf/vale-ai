@@ -10,6 +10,14 @@ CREATE TABLE IF NOT EXISTS PREFIX_marketplace_vendor (
   description TEXT NULL,
   contact_name TEXT NULL,
   phone TEXT NULL,
+  city TEXT NULL,
+  brands TEXT NULL,
+  coverage TEXT NULL,
+  logo_path TEXT NULL,
+  min_order_enabled INTEGER NOT NULL DEFAULT 0,
+  min_order_cents INTEGER NOT NULL DEFAULT 0,
+  vat_rate_percent TEXT NOT NULL DEFAULT '0.00',
+  processing_fee_percent TEXT NOT NULL DEFAULT '0.00',
   date_add TEXT NOT NULL,
   date_upd TEXT NOT NULL
 );
@@ -22,6 +30,12 @@ CREATE TABLE IF NOT EXISTS PREFIX_marketplace_shipping_rule (
   free_threshold_cents INTEGER NULL,
   surcharge_cents_per_kg INTEGER NOT NULL DEFAULT 0,
   postcode_prefixes TEXT NOT NULL DEFAULT '',
+  pallet_base_cents INTEGER NOT NULL DEFAULT 0,
+  pallet_free_threshold_cents INTEGER NULL,
+  parcel_max_weight_grams INTEGER NULL,
+  parcel_max_volume_cm3 INTEGER NULL,
+  pallet_capacity_weight_grams INTEGER NULL,
+  pallet_capacity_volume_cm3 INTEGER NULL,
   active INTEGER NOT NULL DEFAULT 1,
   date_add TEXT NOT NULL,
   date_upd TEXT NOT NULL
@@ -39,6 +53,8 @@ CREATE TABLE IF NOT EXISTS PREFIX_marketplace_vendor_offer (
   price_cents INTEGER NOT NULL,
   discount_percent TEXT NOT NULL DEFAULT '0.00',
   weight_grams INTEGER NOT NULL DEFAULT 0,
+  volume_cm3 INTEGER NOT NULL DEFAULT 0,
+  pallet_only INTEGER NOT NULL DEFAULT 0,
   image_url TEXT NULL,
   active INTEGER NOT NULL DEFAULT 1,
   date_add TEXT NOT NULL,
@@ -133,6 +149,7 @@ CREATE TABLE IF NOT EXISTS PREFIX_marketplace_commission (
   gross_cents INTEGER NOT NULL,
   commission_percent TEXT NOT NULL,
   commission_cents INTEGER NOT NULL,
+  vat_cents INTEGER NOT NULL DEFAULT 0,
   net_cents INTEGER NOT NULL,
   date_add TEXT NOT NULL
 );
@@ -166,6 +183,7 @@ CREATE TABLE IF NOT EXISTS PREFIX_marketplace_shopper (
   first_name TEXT NOT NULL,
   last_name TEXT NOT NULL,
   mangopay_user_id TEXT NULL,
+  id_customer INTEGER NULL,
   date_add TEXT NOT NULL
 );
 
@@ -343,3 +361,24 @@ CREATE INDEX IF NOT EXISTS mp_offer_product_active ON PREFIX_marketplace_vendor_
 CREATE INDEX IF NOT EXISTS mp_offer_ean ON PREFIX_marketplace_vendor_offer (ean13);
 CREATE INDEX IF NOT EXISTS mp_order_shopper ON PREFIX_marketplace_order (id_marketplace_shopper);
 CREATE INDEX IF NOT EXISTS mp_reservation_offer_status ON PREFIX_marketplace_stock_reservation (id_marketplace_vendor_offer, status);
+CREATE UNIQUE INDEX IF NOT EXISTS mp_shopper_customer ON PREFIX_marketplace_shopper (id_customer);
+
+CREATE TABLE IF NOT EXISTS PREFIX_marketplace_customer_link (
+  id_marketplace_customer_link INTEGER PRIMARY KEY AUTOINCREMENT,
+  id_marketplace_shopper INTEGER NOT NULL,
+  id_customer INTEGER NOT NULL,
+  code_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  consumed INTEGER NOT NULL DEFAULT 0,
+  date_add TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS PREFIX_marketplace_api_reset (
+  id_marketplace_api_reset INTEGER PRIMARY KEY AUTOINCREMENT,
+  role TEXT NOT NULL,
+  email TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  consumed INTEGER NOT NULL DEFAULT 0,
+  date_add TEXT NOT NULL
+);

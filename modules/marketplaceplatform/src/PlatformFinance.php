@@ -202,6 +202,7 @@ trait PlatformFinance
                 $portion = $this->productPortion($vendorOrder, $share);
                 $percent = $this->vendorPercent((int) $vendorOrder['id_marketplace_vendor']);
                 $fee = Money::percentOf($portion, $percent);
+                $vat = Money::percentOf($fee, $this->vendorVatPercent((int) $vendorOrder['id_marketplace_vendor']));
                 $refundId = $this->store->insert('marketplace_refund', [
                     'id_marketplace_payment' => (int) $payment['id_marketplace_payment'],
                     'id_marketplace_order' => $orderId,
@@ -219,6 +220,7 @@ trait PlatformFinance
                     'gross_cents' => -$portion,
                     'commission_percent' => $percent,
                     'commission_cents' => -$fee,
+                    'vat_cents' => -$vat,
                     'net_cents' => -($portion - $fee),
                     'date_add' => $now,
                 ]);
@@ -691,7 +693,12 @@ trait PlatformFinance
             $this->audit($actor, 'payment.succeeded', 'payment:' . $paymentId, $providerId);
         });
 
-        return $this->requirePayment($paymentId);
+        $payment = $this->requirePayment($paymentId);
+        if ((string) $payment['status'] === 'succeeded') {
+            $this->publishNativeOrder((int) $payment['id_marketplace_order']);
+        }
+
+        return $payment;
     }
 
     private function writeSaleCommissions(int $orderId): int
@@ -709,12 +716,14 @@ trait PlatformFinance
             $percent = $this->vendorPercent((int) $vendorOrder['id_marketplace_vendor']);
             $gross = (int) $vendorOrder['product_cents'];
             $fee = Money::percentOf($gross, $percent);
+            $vat = Money::percentOf($fee, $this->vendorVatPercent((int) $vendorOrder['id_marketplace_vendor']));
             $this->store->insert('marketplace_commission', [
                 'id_marketplace_vendor' => (int) $vendorOrder['id_marketplace_vendor'],
                 'id_marketplace_vendor_order' => (int) $vendorOrder['id_marketplace_vendor_order'],
                 'gross_cents' => $gross,
                 'commission_percent' => $percent,
                 'commission_cents' => $fee,
+                'vat_cents' => $vat,
                 'net_cents' => $gross - $fee,
                 'date_add' => $now,
             ]);
@@ -831,6 +840,13 @@ trait PlatformFinance
         $vendor = $this->requireVendor($vendorId);
 
         return $this->percent($vendor['commission_percent']);
+    }
+
+    private function vendorVatPercent(int $vendorId): string
+    {
+        $vendor = $this->requireVendor($vendorId);
+
+        return $this->percent($vendor['vat_rate_percent'] ?? '0.00');
     }
 
     private function markPayment(int $paymentId, string $status, ?string $providerId, string $providerStatus): void
